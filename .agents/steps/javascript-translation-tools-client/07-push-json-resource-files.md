@@ -1,6 +1,6 @@
 # 07 — Push JSON resource files
 
-Status: pending
+Status: done
 Blocked by: 06
 
 ## What to build
@@ -26,9 +26,19 @@ Projects: packages/cli
 
 ## Acceptance criteria
 
-- [ ] `push` POSTs `/api/v1/translations/project` with this package's origins, locales, keys, and values.
-- [ ] With prune false, a remote-only key is still present in the POST; with prune true it is omitted.
-- [ ] A key override sends the TranslationTools key, not the JSON key.
-- [ ] Invalid keys and nested JSON fail the CLI without posting.
-- [ ] Two packages' JSON with the same JSON key produce different origins in the POST body.
-- [ ] Authorization is the raw API key; `TRANSLATIONTOOLS_API_KEY` wins over yaml.
+- [x] `push` POSTs `/api/v1/translations/project` with this package's origins, locales, keys, and values.
+- [x] With prune false, a remote-only key is still present in the POST; with prune true it is omitted.
+- [x] A key override sends the TranslationTools key, not the JSON key.
+- [x] Invalid keys and nested JSON fail the CLI without posting.
+- [x] Two packages' JSON with the same JSON key produce different origins in the POST body.
+- [x] Authorization is the raw API key; `TRANSLATIONTOOLS_API_KEY` wins over yaml.
+
+## Outcome
+
+`translationtools push` is implemented in `packages/cli`. `bin.ts` dispatches to `runPush(cwd)` in `push.ts`. API key via `resolveApiKey` (env then yaml); missing key exits 1 with no HTTP. Base URL via `resolveCliBaseUrl`.
+
+Local files are discovered and validated through existing `discoverJsonResourceFiles` / `buildTranslationProject` (invalid TT keys, nested/non-string JSON fail before any request). Local push items use lowercased origin `{package}:/{default-locale path}`, locale from each file, and `translationKey` after `keyOverrides`. Empty `{}` files contribute no items.
+
+`jsonResources.prune` true: POST body is local items only (no GET). False (default): GET project metadata + each locale (union of remote default, remote locales, and locales present in local JSON — same as KMP `pullTranslations` when push merges), then merge all remote items with local (local wins on origin+locale+key), matching KMP `mergeRemoteAndLocalPushItems` (other packages' remote keys are kept when not pruning). POST `{ items }` only — no `prune` / `environment` fields (KMP plugin body). Response counts are printed like KMP.
+
+`http.ts` gained `postProjectItems` on the existing `node:http`/`https` client (`Connection: close`, `agent: false`, raw `Authorization`). Coverage: `packages/cli/test/push.test.ts`. `json-resources.ts` needed no edits.

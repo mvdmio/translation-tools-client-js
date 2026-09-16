@@ -3,6 +3,7 @@
 import { runGenerate } from './generate.js';
 import { runInit } from './init.js';
 import { runPull } from './pull.js';
+import { runPush } from './push.js';
 
 const args = process.argv.slice(2);
 
@@ -60,6 +61,23 @@ Options:
           `Generated ${result.generatedFile} (${result.typedKeyCount ?? 0} typed keys)\n`,
         );
       }
+      process.exit(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Error: ${message}\n`);
+      process.exit(1);
+    }
+  }
+
+  if (command === 'push') {
+    try {
+      const result = await runPush(process.cwd());
+      process.stdout.write(
+        `Push complete. Synced ${result.receivedKeyCount} translation values.\n`,
+      );
+      process.stdout.write(
+        `Created: ${result.createdKeyCount}. Updated values: ${result.updatedKeyCount}. Removed: ${result.removedKeyCount}.\n`,
+      );
       process.exit(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

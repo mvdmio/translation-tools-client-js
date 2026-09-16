@@ -15,9 +15,24 @@ export type LocaleTranslationItem = {
   value: string | null;
 };
 
+export type ProjectPushItem = {
+  origin: string;
+  locale: string;
+  key: string;
+  value: string | null;
+};
+
+export type ProjectPushResponse = {
+  receivedKeyCount: number;
+  createdKeyCount: number;
+  updatedKeyCount: number;
+  removedKeyCount: number;
+};
+
 export type CliTranslationToolsHttp = {
   getProjectMetadata(): Promise<ProjectMetadataResponse>;
   getLocale(locale: string): Promise<LocaleTranslationItem[]>;
+  postProjectItems(items: readonly ProjectPushItem[]): Promise<ProjectPushResponse>;
 };
 
 export type CreateCliHttpOptions = {
@@ -37,7 +52,12 @@ export function createCliHttp(options: CreateCliHttpOptions): CliTranslationTool
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
 
   async function getJson<T>(label: string, urlPath: string): Promise<T> {
-    const bodyText = await requestText(label, `${baseUrl}${urlPath}`, options.apiKey);
+    const bodyText = await requestText({
+      label,
+      urlString: `${baseUrl}${urlPath}`,
+      apiKey: options.apiKey,
+      method: 'GET',
+    });
     try {
       return JSON.parse(bodyText) as T;
     } catch (error) {
@@ -81,18 +101,62 @@ export function createCliHttp(options: CreateCliHttpOptions): CliTranslationTool
         };
       });
     },
+
+    async postProjectItems(items: readonly ProjectPushItem[]): Promise<ProjectPushResponse> {
+      const bodyText = await requestText({
+        label: 'project push',
+        urlString: `${baseUrl}/api/v1/translations/project`,
+        apiKey: options.apiKey,
+        method: 'POST',
+        body: JSON.stringify({ items }),
+        contentType: 'application/json',
+      });
+      try {
+        const body = JSON.parse(bodyText) as Record<string, unknown>;
+        return {
+          receivedKeyCount: Number(body.receivedKeyCount ?? 0),
+          createdKeyCount: Number(body.createdKeyCount ?? 0),
+          updatedKeyCount: Number(body.updatedKeyCount ?? 0),
+          removedKeyCount: Number(body.removedKeyCount ?? 0),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to parse TranslationTools project push response: ${message}`);
+      }
+    },
   };
 }
 
-function requestText(label: string, urlString: string, apiKey: string): Promise<string> {
+type RequestTextOptions = {
+  label: string;
+  urlString: string;
+  apiKey: string;
+  method: 'GET' | 'POST';
+  body?: string;
+  contentType?: string;
+};
+
+function requestText(options: RequestTextOptions): Promise<string> {
   return new Promise((resolve, reject) => {
     let url: URL;
     try {
-      url = new URL(urlString);
+      url = new URL(options.urlString);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      reject(new Error(`TranslationTools ${label} request failed: ${message}`));
+      reject(new Error(`TranslationTools ${options.label} request failed: ${message}`));
       return;
+    }
+
+    const headers: Record<string, string | number> = {
+      Authorization: options.apiKey,
+      Accept: 'application/json',
+      Connection: 'close',
+    };
+    if (options.contentType !== undefined) {
+      headers['Content-Type'] = options.contentType;
+    }
+    if (options.body !== undefined) {
+      headers['Content-Length'] = Buffer.byteLength(options.body, 'utf8');
     }
 
     const transport = url.protocol === 'http:' ? http : https;
@@ -102,12 +166,8 @@ function requestText(label: string, urlString: string, apiKey: string): Promise<
         hostname: url.hostname,
         port: url.port || undefined,
         path: `${url.pathname}${url.search}`,
-        method: 'GET',
-        headers: {
-          Authorization: apiKey,
-          Accept: 'application/json',
-          Connection: 'close',
-        },
+        method: options.method,
+        headers,
         agent: false,
       },
       (res) => {
@@ -121,7 +181,7 @@ function requestText(label: string, urlString: string, apiKey: string): Promise<
           if (status < 200 || status >= 300) {
             reject(
               new Error(
-                `TranslationTools ${label} request failed with status ${status}: ${bodyText.trim()}`,
+                `TranslationTools ${options.label} request failed with status ${status}: ${bodyText.trim()}`,
               ),
             );
             return;
@@ -134,10 +194,13 @@ function requestText(label: string, urlString: string, apiKey: string): Promise<
     req.on('error', (error) => {
       reject(
         new Error(
-          `TranslationTools ${label} request failed: ${error instanceof Error ? error.message : String(error)}`,
+          `TranslationTools ${options.label} request failed: ${error instanceof Error ? error.message : String(error)}`,
         ),
       );
     });
+    if (options.body !== undefined) {
+      req.write(options.body, 'utf8');
+    }
     req.end();
   });
 }
