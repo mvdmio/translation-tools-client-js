@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { translationRefKey } from './translation-ref.js';
 
 const INVALID_IDENTIFIER_CHARS = /[^a-z0-9_]+/g;
 const REPEATED_UNDERSCORES = /_+/g;
@@ -125,14 +126,14 @@ export function sanitizeIdentifier(rawKey: string): string {
 }
 
 export function stableCollisionSuffix(origin: string, jsonKey: string): string {
-  const digest = createHash('sha256').update(`${origin}\0${jsonKey}`, 'utf8').digest('hex');
+  const digest = createHash('sha256').update(translationRefKey(origin, jsonKey), 'utf8').digest('hex');
   return digest.slice(0, 8);
 }
 
 export function resolveIdentifierNames(
   entries: ReadonlyArray<{ origin: string; jsonKey: string }>,
 ): Map<string, string> {
-  const collisionKey = (origin: string, jsonKey: string) => `${origin}\0${jsonKey}`;
+  const collisionKey = (origin: string, jsonKey: string) => translationRefKey(origin, jsonKey);
   const sanitizedByEntry = new Map<string, string>();
   const groups = new Map<string, string[]>();
 

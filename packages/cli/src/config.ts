@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { valueKind } from './value-kind.js';
 
 export const CONFIG_FILE_NAME = 'translationtools.yaml';
 export const DEFAULT_RESOURCE_DIRECTORY = 'translations';
@@ -89,7 +90,7 @@ export function parseConfig(text: string, filePath: string): TranslationToolsCon
 
   if (Object.prototype.hasOwnProperty.call(root, 'snapshotFile')) {
     throw new Error(
-      'snapshotFile is no longer supported. Use the default project-root snapshot.json path.',
+      'snapshotFile is not supported. The default snapshot store does not persist; a file snapshot store is opt-in on the runtime client and takes an explicit path.',
     );
   }
 
@@ -198,14 +199,4 @@ export function resolveApiKey(config: TranslationToolsConfig, env: NodeJS.Proces
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function valueKind(value: unknown): string {
-  if (value === null) {
-    return 'null';
-  }
-  if (Array.isArray(value)) {
-    return 'array';
-  }
-  return typeof value;
 }

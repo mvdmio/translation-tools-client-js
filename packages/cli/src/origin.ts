@@ -56,3 +56,31 @@ export function buildOrigin(packageName: string, defaultLocaleRelativePath: stri
     .replace(/^\/+/, '');
   return `${packageName}:/${normalized}`.toLowerCase();
 }
+
+export function packageOriginPrefix(packageName: string): string {
+  return `${packageName.toLowerCase()}:`;
+}
+
+export function originMatchesPackage(origin: string, packageName: string): boolean {
+  return origin.startsWith(packageOriginPrefix(packageName));
+}
+
+/** Project-relative path of the default-locale JSON resource file encoded in an origin, or null. */
+export function defaultLocaleRelativePathFromOrigin(
+  origin: string,
+  packageName: string,
+): string | null {
+  const packagePrefix = packageOriginPrefix(packageName);
+  if (!origin.startsWith(packagePrefix)) {
+    return null;
+  }
+  let resourcePath = origin.slice(packagePrefix.length);
+  if (!resourcePath.startsWith('/')) {
+    return null;
+  }
+  resourcePath = resourcePath.slice(1);
+  if (!resourcePath.toLowerCase().endsWith('.json')) {
+    return null;
+  }
+  return resourcePath;
+}

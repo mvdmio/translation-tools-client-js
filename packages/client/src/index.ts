@@ -28,10 +28,4 @@ export {
   TranslationToolsValidationException,
   PlaceholderSubstitutionException,
 } from './exceptions.js';
-export type { PlaceholderBindings, GlobalPlaceholderResolver } from './placeholders.js';
-export {
-  createGlobalPlaceholderRegistry,
-  parsePlaceholderSegments,
-  substitutePlaceholders,
-  isValidGlobalPlaceholderName,
-} from './placeholders.js';
+export type { PlaceholderBindings } from './placeholders.js';

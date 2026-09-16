@@ -127,7 +127,6 @@ export function substitutePlaceholders(args: {
   value: string;
   bindings?: PlaceholderBindings | null;
   globals: GlobalPlaceholderResolver;
-  knownSet?: ReadonlySet<string> | null;
   throwOnError?: boolean;
   warn?: ((message: string) => void) | null;
 }): string {
@@ -135,7 +134,6 @@ export function substitutePlaceholders(args: {
     value,
     bindings = null,
     globals,
-    knownSet = null,
     throwOnError = false,
     warn = null,
   } = args;
@@ -175,11 +173,6 @@ export function substitutePlaceholders(args: {
           `Could not resolve global placeholder '{${name}}' (resolver failed or returned null).`,
         );
       }
-      continue;
-    }
-
-    if (knownSet != null && !knownSet.has(name)) {
-      result += `{${name}}`;
       continue;
     }
 

@@ -1,6 +1,14 @@
 import { createRequire } from 'node:module';
 import { TranslationToolsValidationException } from './exceptions.js';
+import { HeartbeatLoop } from './heartbeat.js';
 import type { TranslationToolsApi } from './http.js';
+import {
+  getCachedItem,
+  localeMapFromSnapshots,
+  putCachedItem,
+  snapshotsFromLocaleMap,
+  type LocaleMap,
+} from './locale-cache.js';
 import {
   createRefreshState,
   type ProjectMetadata,
@@ -11,6 +19,7 @@ import {
   type TranslationSnapshot,
   type TranslationStringResource,
 } from './models.js';
+import { bindValueObserver } from './observers.js';
 import type { NormalizedClientOptions } from './options.js';
 import {
   createGlobalPlaceholderRegistry,
@@ -18,43 +27,12 @@ import {
   type GlobalPlaceholderResolver,
   type PlaceholderBindings,
 } from './placeholders.js';
+import { isStringResource, normalizeLocale, validateRef } from './refs.js';
 
 const DEFAULT_LOCALE = 'en';
-const VALID_KEY_RE = /^[A-Za-z0-9._-]+$/;
 const CLIENT_VERSION = (
   createRequire(import.meta.url)('../package.json') as { version: string }
 ).version;
-
-type LocaleMap = Map<string, Map<string, TranslationItem>>;
-
-function refKey(ref: TranslationRef): string {
-  return `${ref.origin}\0${ref.key}`;
-}
-
-function normalizeLocale(locale: string): string {
-  return locale.trim().toLowerCase();
-}
-
-function validateKey(key: string): string {
-  if (key.trim() === '') {
-    throw new TranslationToolsValidationException('Translation key is required.');
-  }
-  if (!VALID_KEY_RE.test(key)) {
-    throw new TranslationToolsValidationException(`Invalid translation key: ${key}`);
-  }
-  return key;
-}
-
-function validateRef(ref: TranslationRef): TranslationRef {
-  if (ref.origin.trim() === '') {
-    throw new TranslationToolsValidationException('Translation origin is required.');
-  }
-  return { origin: ref.origin, key: validateKey(ref.key) };
-}
-
-function isResource(value: TranslationRef | TranslationStringResource): value is TranslationStringResource {
-  return 'ref' in value && value.ref != null && typeof value.ref === 'object';
-}
 
 export class TranslationRenderBuilder {
   private readonly placeholders = new Map<string, string | null | undefined>();
@@ -82,6 +60,7 @@ export class TranslationRenderBuilder {
 
 export class TranslationToolsClient {
   private readonly globals: GlobalPlaceholderResolver;
+  private readonly heartbeat: HeartbeatLoop;
   private projectMetadata: ProjectMetadata | null = null;
   private translations: LocaleMap = new Map();
   private refreshState: TranslationRefreshState = createRefreshState();
@@ -89,7 +68,6 @@ export class TranslationToolsClient {
   private clientId: string | null = null;
   private readonly listeners = new Set<() => void>();
   private refreshInFlight: Promise<void> | null = null;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     readonly options: NormalizedClientOptions,
@@ -97,6 +75,7 @@ export class TranslationToolsClient {
     private readonly now: () => Date = () => new Date(),
   ) {
     this.globals = createGlobalPlaceholderRegistry(options.globalPlaceholders);
+    this.heartbeat = new HeartbeatLoop(options.heartbeatIntervalMs, () => this.sendHeartbeat());
   }
 
   async initialize(): Promise<void> {
@@ -156,13 +135,17 @@ export class TranslationToolsClient {
   getCached(
     target: TranslationRef | TranslationStringResource,
     locale?: string | null,
+  ): string | null;
+  getCached(
+    target: TranslationRef | TranslationStringResource,
+    locale?: string | null,
   ): string | null {
-    if (isResource(target)) {
+    if (isStringResource(target)) {
       return this.getCached(target.ref, locale) ?? target.fallback ?? target.ref.key;
     }
     const validatedRef = validateRef(target);
     const resolvedLocale = this.resolveLocale(locale);
-    return this.translations.get(resolvedLocale)?.get(refKey(validatedRef))?.value ?? null;
+    return getCachedItem(this.translations, resolvedLocale, validatedRef)?.value ?? null;
   }
 
   get(
@@ -191,9 +174,10 @@ export class TranslationToolsClient {
     if (typeof targetOrOrigin === 'string') {
       const origin = targetOrOrigin;
       const key = localeOrKey ?? '';
-      const locale = typeof placeholdersOrLocale === 'string' || placeholdersOrLocale == null
-        ? placeholdersOrLocale
-        : undefined;
+      const locale =
+        typeof placeholdersOrLocale === 'string' || placeholdersOrLocale == null
+          ? placeholdersOrLocale
+          : undefined;
       const placeholders =
         typeof placeholdersOrLocale === 'object' && placeholdersOrLocale != null
           ? placeholdersOrLocale
@@ -203,7 +187,7 @@ export class TranslationToolsClient {
       return this.get({ origin, key }, locale, placeholders);
     }
 
-    if (isResource(targetOrOrigin)) {
+    if (isStringResource(targetOrOrigin)) {
       const placeholders =
         typeof placeholdersOrLocale === 'object' && placeholdersOrLocale != null
           ? placeholdersOrLocale
@@ -227,19 +211,22 @@ export class TranslationToolsClient {
 
     const validatedRef = validateRef(targetOrOrigin);
     const resolvedLocale = this.resolveLocale(localeOrKey);
-    const cachedItem = this.translations.get(resolvedLocale)?.get(refKey(validatedRef));
+    const cachedItem = getCachedItem(this.translations, resolvedLocale, validatedRef);
     if (cachedItem != null) {
       return this.render(cachedItem.value ?? defaultValue ?? validatedRef.key, placeholders);
     }
 
-    const fetched = await this.api.getTranslation(
-      resolvedLocale,
-      validatedRef,
-      defaultValue,
-    );
-    this.putItem(resolvedLocale, { ...fetched, ref: validateRef(fetched.ref) });
-    await this.persist();
-    return this.render(fetched.value ?? defaultValue ?? validatedRef.key, placeholders);
+    try {
+      const fetched = await this.api.getTranslation(resolvedLocale, validatedRef, defaultValue);
+      this.putItem(resolvedLocale, { ...fetched, ref: validateRef(fetched.ref) });
+      await this.persist();
+      return this.render(fetched.value ?? defaultValue ?? validatedRef.key, placeholders);
+    } catch (error) {
+      if (error instanceof TranslationToolsValidationException) {
+        throw error;
+      }
+      return this.render(defaultValue ?? validatedRef.key, placeholders);
+    }
   }
 
   withPlaceholders(
@@ -298,49 +285,16 @@ export class TranslationToolsClient {
       | ((value: string) => void),
     maybeListener?: ((value: string | null) => void) | ((value: string) => void),
   ): () => void {
-    const locale =
-      typeof localeOrListener === 'function' ? undefined : localeOrListener;
+    const locale = typeof localeOrListener === 'function' ? undefined : localeOrListener;
     const listener = (
       typeof localeOrListener === 'function' ? localeOrListener : maybeListener
     ) as (value: string | null) => void;
 
-    const read = (): string | null => {
-      if (isResource(target)) {
-        return this.getCached(target, locale);
-      }
-      return this.getCached(target, locale);
-    };
-
-    let last = read();
-    listener(last);
-
-    const onChange = (): void => {
-      const next = read();
-      if (next !== last) {
-        last = next;
-        listener(next);
-      }
-    };
-
-    this.listeners.add(onChange);
-    return () => {
-      this.listeners.delete(onChange);
-    };
+    return bindValueObserver(this.listeners, () => this.getCached(target, locale), listener);
   }
 
   observeRefreshState(listener: (state: TranslationRefreshState) => void): () => void {
-    listener(this.refreshState);
-    let last = this.refreshState;
-    const onChange = (): void => {
-      if (this.refreshState !== last) {
-        last = this.refreshState;
-        listener(this.refreshState);
-      }
-    };
-    this.listeners.add(onChange);
-    return () => {
-      this.listeners.delete(onChange);
-    };
+    return bindValueObserver(this.listeners, () => this.refreshState, listener);
   }
 
   async refresh(): Promise<void> {
@@ -355,10 +309,7 @@ export class TranslationToolsClient {
   }
 
   dispose(): void {
-    if (this.heartbeatTimer != null) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
+    this.heartbeat.stop();
     this.listeners.clear();
   }
 
@@ -376,7 +327,6 @@ export class TranslationToolsClient {
       value,
       bindings: placeholders,
       globals: this.globals,
-      knownSet: null,
       throwOnError: this.options.throwOnPlaceholderError,
       warn: (message) => {
         console.warn(message);
@@ -400,26 +350,20 @@ export class TranslationToolsClient {
     if (!this.options.heartbeatEnabled) {
       return;
     }
-    if (this.heartbeatTimer != null) {
-      return;
-    }
+    this.heartbeat.start();
+  }
 
-    const beat = (): void => {
-      const clientId = this.clientId ?? crypto.randomUUID();
-      this.clientId = clientId;
-      void this.api
-        .sendHeartbeat({
-          clientId,
-          environment: this.options.environment,
-          platform: 'node',
-          version: CLIENT_VERSION,
-        })
-        .catch(() => {});
-    };
-
-    beat();
-    this.heartbeatTimer = setInterval(beat, this.options.heartbeatIntervalMs);
-    this.heartbeatTimer.unref?.();
+  private sendHeartbeat(): void {
+    const clientId = this.clientId ?? crypto.randomUUID();
+    this.clientId = clientId;
+    void this.api
+      .sendHeartbeat({
+        clientId,
+        environment: this.options.environment,
+        platform: 'node',
+        version: CLIENT_VERSION,
+      })
+      .catch(() => {});
   }
 
   private async refreshInternal(force: boolean): Promise<void> {
@@ -483,17 +427,7 @@ export class TranslationToolsClient {
     this.projectMetadata = stored.projectMetadata
       ? this.normalizeMetadata(stored.projectMetadata)
       : null;
-    const next: LocaleMap = new Map();
-    for (const snapshot of stored.snapshots) {
-      const locale = normalizeLocale(snapshot.locale);
-      const items = new Map<string, TranslationItem>();
-      for (const item of snapshot.items) {
-        const validated = validateRef(item.ref);
-        items.set(refKey(validated), { ref: validated, value: item.value });
-      }
-      next.set(locale, items);
-    }
-    this.translations = next;
+    this.translations = localeMapFromSnapshots(stored.snapshots);
     this.lastSuccessfulRefreshAt = stored.lastSuccessfulRefreshAt;
     if (stored.clientId) {
       this.clientId = stored.clientId;
@@ -506,13 +440,9 @@ export class TranslationToolsClient {
   }
 
   private async persist(): Promise<void> {
-    const snapshots: TranslationSnapshot[] = [];
-    for (const [locale, items] of this.translations) {
-      snapshots.push({ locale, items: [...items.values()] });
-    }
     await this.options.snapshotStore.save({
       projectMetadata: this.projectMetadata,
-      snapshots,
+      snapshots: snapshotsFromLocaleMap(this.translations),
       lastSuccessfulRefreshAt: this.lastSuccessfulRefreshAt,
       clientId: this.clientId,
     });
@@ -524,28 +454,17 @@ export class TranslationToolsClient {
     completedAt: string,
   ): void {
     this.projectMetadata = metadata;
-    const next: LocaleMap = new Map();
-    for (const snapshot of snapshots) {
-      const locale = normalizeLocale(snapshot.locale);
-      const items = new Map<string, TranslationItem>();
-      for (const item of snapshot.items) {
-        const validated = validateRef(item.ref);
-        items.set(refKey(validated), { ref: validated, value: item.value });
-      }
-      next.set(locale, items);
-    }
-    this.translations = next;
+    this.translations = localeMapFromSnapshots(snapshots);
     this.lastSuccessfulRefreshAt = completedAt;
   }
 
   private putItem(locale: string, item: TranslationItem): void {
     const normalizedLocale = normalizeLocale(locale);
     const validatedRef = validateRef(item.ref);
-    const localeItems = new Map(this.translations.get(normalizedLocale) ?? []);
-    localeItems.set(refKey(validatedRef), { ref: validatedRef, value: item.value });
-    const next = new Map(this.translations);
-    next.set(normalizedLocale, localeItems);
-    this.translations = next;
+    this.translations = putCachedItem(this.translations, normalizedLocale, {
+      ref: validatedRef,
+      value: item.value,
+    });
     this.emit();
   }
 
@@ -591,10 +510,9 @@ export class TranslationToolsClient {
     const normalizedLocales = [...new Set(metadata.locales.map(normalizeLocale))];
     const normalizedDefaultLocale = normalizeLocale(metadata.defaultLocale);
     return {
-      locales:
-        normalizedLocales.includes(normalizedDefaultLocale)
-          ? normalizedLocales
-          : [...normalizedLocales, normalizedDefaultLocale],
+      locales: normalizedLocales.includes(normalizedDefaultLocale)
+        ? normalizedLocales
+        : [...normalizedLocales, normalizedDefaultLocale],
       defaultLocale: normalizedDefaultLocale,
     };
   }

@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   CONFIG_FILE_NAME,
@@ -8,6 +8,7 @@ import {
   renderStarterJson,
   starterJsonPath,
 } from './config.js';
+import { fileExists } from './fs.js';
 
 export type InitResult = {
   configFile: string;
@@ -19,10 +20,10 @@ export async function runInit(cwd: string): Promise<InitResult> {
   const jsonFile = starterJsonPath(cwd);
 
   const existing: string[] = [];
-  if (await exists(yamlFile)) {
+  if (await fileExists(yamlFile)) {
     existing.push(CONFIG_FILE_NAME);
   }
-  if (await exists(jsonFile)) {
+  if (await fileExists(jsonFile)) {
     existing.push(STARTER_JSON_RELATIVE_PATH.split(path.sep).join('/'));
   }
 
@@ -38,13 +39,4 @@ export async function runInit(cwd: string): Promise<InitResult> {
     configFile: yamlFile,
     starterJsonFile: jsonFile,
   };
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }

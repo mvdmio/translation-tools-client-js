@@ -9,6 +9,7 @@ import {
 } from './json-resources.js';
 import { readPackageName } from './origin.js';
 import { resolveIdentifierNames } from './sanitize.js';
+import { translationRefKey } from './translation-ref.js';
 
 export type GenerateResult = {
   outputFile: string;
@@ -45,7 +46,7 @@ export function renderGeneratedModule(project: JsonResourceProject): string {
   const nameByEntry = resolveIdentifierNames(
     project.entries.map((entry) => ({ origin: entry.origin, jsonKey: entry.jsonKey })),
   );
-  const entryId = (entry: TranslationEntry) => `${entry.origin}\0${entry.jsonKey}`;
+  const entryId = (entry: TranslationEntry) => translationRefKey(entry.origin, entry.jsonKey);
 
   const lines: string[] = [];
   lines.push(

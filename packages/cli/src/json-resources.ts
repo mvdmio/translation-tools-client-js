@@ -1,6 +1,8 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildOrigin } from './origin.js';
+import { translationRefKey } from './translation-ref.js';
+import { valueKind } from './value-kind.js';
 
 export const TRANSLATION_KEY_PATTERN = /^[A-Za-z0-9._-]+$/;
 
@@ -219,7 +221,7 @@ export function buildTranslationProject(
         );
       }
 
-      const mapKey = `${origin}\0${jsonKey}`;
+      const mapKey = translationRefKey(origin, jsonKey);
       let entry = collected.get(mapKey);
       if (!entry) {
         entry = {
@@ -272,10 +274,10 @@ export async function writeJsonResourceFile(
 }
 
 /**
- * Project-relative path of the locale file for a default-locale JSON resource path.
+ * Project-relative path of the JSON resource file for a default-locale JSON resource path.
  * Default locale keeps the unsuffixed name; others use `name.{locale}.json`.
  */
-export function localeFileRelativePath(
+export function jsonResourceRelativePath(
   defaultLocaleRelativePath: string,
   locale: string,
   defaultLocale: string,
@@ -300,8 +302,8 @@ export function localeFileRelativePath(
 }
 
 /**
- * Merge server values into a local locale file map.
- * prune=false keeps local-only keys; prune=true keeps only server keys for this write.
+ * Merge TranslationTools values into a local JSON resource file map.
+ * prune=false keeps local-only keys; prune=true keeps only TranslationTools keys for this write.
  */
 export function mergeLocaleEntries(
   existing: Readonly<Record<string, string>>,
@@ -314,7 +316,7 @@ export function mergeLocaleEntries(
   return { ...existing, ...incoming };
 }
 
-/** Reverse jsonResources.keyOverrides (JSON key → TT key) to map server keys back to JSON keys. */
+/** Reverse jsonResources.keyOverrides (JSON key → TranslationTools key) to map TranslationTools keys back to JSON keys. */
 export function reverseKeyOverrides(
   keyOverrides: Readonly<Record<string, string>>,
 ): Map<string, string> {
@@ -336,14 +338,4 @@ export function toJsonKey(
   reverseOverrides: ReadonlyMap<string, string>,
 ): string {
   return reverseOverrides.get(translationKey) ?? translationKey;
-}
-
-function valueKind(value: unknown): string {
-  if (value === null) {
-    return 'null';
-  }
-  if (Array.isArray(value)) {
-    return 'array';
-  }
-  return typeof value;
 }

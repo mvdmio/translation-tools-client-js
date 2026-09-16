@@ -86,7 +86,7 @@ Options:
     }
   }
 
-  process.stderr.write(`Command not implemented: ${command}\n`);
+  process.stderr.write(`Unknown command: ${command}\n`);
   process.exit(1);
 }
 

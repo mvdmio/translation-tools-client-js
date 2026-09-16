@@ -246,6 +246,9 @@ test('invalid origin or key throws; a miss does not throw', async () => {
 
   assert.equal(client.getCached(missingRef, 'en'), null);
   assert.equal(client.getCached(missingResource, 'en'), 'Missing fallback');
+  assert.equal(await client.get(missingResource, 'en'), 'Missing fallback');
+  assert.equal(await client.get(missingNoFallback, 'en'), 'missing_key');
+  assert.equal(await client.get(missingRef, 'en'), 'missing_key');
   client.dispose();
 });
 

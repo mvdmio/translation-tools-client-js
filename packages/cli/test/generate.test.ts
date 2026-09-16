@@ -362,6 +362,22 @@ jsonResources:
   assert.match(generated, /key: "home\.title"/);
 });
 
+test('yaml snapshotFile is rejected because a file snapshot store is opt-in at runtime', async () => {
+  const cwd = await projectWith('example-app', {
+    'translationtools.yaml': `${starterYaml()}snapshotFile: snapshot.json\n`,
+    'translations/strings.json': `${JSON.stringify({ home_title: 'Home' }, null, 2)}\n`,
+  });
+
+  const result = await runCli(['generate'], {
+    cwd,
+    env: { ...process.env, TRANSLATIONTOOLS_API_KEY: '' },
+  });
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /snapshotFile is not supported/);
+  assert.match(result.stderr, /opt-in/);
+  assert.doesNotMatch(result.stderr, /snapshot\.json path/);
+});
+
 test('CLI README documents that renaming the npm package changes origins', async () => {
   const readme = await readFile(path.join(repoRoot, 'packages/cli/README.md'), 'utf8');
   assert.match(readme, /Renaming the npm package changes origins/i);

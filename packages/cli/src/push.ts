@@ -10,7 +10,9 @@ import {
   discoverJsonResourceFiles,
   type JsonResourceProject,
 } from './json-resources.js';
-import { readPackageName } from './origin.js';
+import { collectLocales } from './locales.js';
+import { originMatchesPackage, readPackageName } from './origin.js';
+import { translationPushKey } from './translation-ref.js';
 
 export type PushResult = {
   receivedKeyCount: number;
@@ -49,26 +51,20 @@ export async function runPush(
   const baseUrl = resolveCliBaseUrl(env);
   const http = createCliHttp({ apiKey, baseUrl });
 
-  let items: ProjectPushItem[];
-  if (config.jsonResources.prune) {
-    items = localItems;
-  } else {
-    const metadata = await http.getProjectMetadata();
-    const locales = collectPushLocales(
-      metadata.defaultLocale,
-      metadata.locales,
-      project.locales,
-    );
-    if (locales.length === 0) {
-      throw new Error('TranslationTools project has no locales configured.');
-    }
-
-    const remoteByLocale = new Map<string, LocaleTranslationItem[]>();
-    for (const locale of locales) {
-      remoteByLocale.set(locale, await http.getLocale(locale));
-    }
-    items = mergeRemoteAndLocalPushItems(remoteByLocale, localItems);
+  const metadata = await http.getProjectMetadata();
+  const locales = collectLocales(metadata.defaultLocale, metadata.locales, project.locales);
+  if (locales.length === 0) {
+    throw new Error('TranslationTools project has no locales configured.');
   }
+
+  const remoteByLocale = new Map<string, LocaleTranslationItem[]>();
+  for (const locale of locales) {
+    remoteByLocale.set(locale, await http.getLocale(locale));
+  }
+
+  const items = mergeRemoteAndLocalPushItems(remoteByLocale, localItems, {
+    prunePackageName: config.jsonResources.prune ? packageName : null,
+  });
 
   const response = await http.postProjectItems(items);
   return {
@@ -96,55 +92,31 @@ export function toPushItems(project: JsonResourceProject): ProjectPushItem[] {
 export function mergeRemoteAndLocalPushItems(
   remoteByLocale: ReadonlyMap<string, readonly LocaleTranslationItem[]>,
   localItems: readonly ProjectPushItem[],
+  options?: { prunePackageName?: string | null },
 ): ProjectPushItem[] {
   const merged = new Map<string, ProjectPushItem>();
+  const prunePackageName = options?.prunePackageName ?? null;
 
   for (const [locale, remoteItems] of remoteByLocale) {
     for (const remote of remoteItems) {
+      if (prunePackageName != null && originMatchesPackage(remote.origin, prunePackageName)) {
+        continue;
+      }
       const item: ProjectPushItem = {
         origin: remote.origin,
         locale,
         key: remote.key,
         value: remote.value,
       };
-      merged.set(pushItemKey(item), item);
+      merged.set(translationPushKey(item.origin, item.locale, item.key), item);
     }
   }
 
   for (const item of localItems) {
-    merged.set(pushItemKey(item), item);
+    merged.set(translationPushKey(item.origin, item.locale, item.key), item);
   }
 
   return sortPushItems([...merged.values()]);
-}
-
-function collectPushLocales(
-  remoteDefaultLocale: string | null,
-  remoteLocales: readonly string[],
-  localLocales: readonly string[],
-): string[] {
-  const locales = new Set<string>();
-  const add = (value: string | null | undefined) => {
-    if (typeof value !== 'string') {
-      return;
-    }
-    const normalized = value.trim().toLowerCase();
-    if (normalized !== '') {
-      locales.add(normalized);
-    }
-  };
-  add(remoteDefaultLocale);
-  for (const locale of localLocales) {
-    add(locale);
-  }
-  for (const locale of remoteLocales) {
-    add(locale);
-  }
-  return [...locales].sort((a, b) => a.localeCompare(b));
-}
-
-function pushItemKey(item: ProjectPushItem): string {
-  return `${item.origin}\0${item.locale}\0${item.key}`;
 }
 
 function sortPushItems(items: readonly ProjectPushItem[]): ProjectPushItem[] {

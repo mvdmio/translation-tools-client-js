@@ -63,7 +63,7 @@ async function fileExists(absolutePath: string): Promise<boolean> {
   }
 }
 
-test('pull writes this package origins only and creates missing locale files', async () => {
+test('pull writes this package origins only and creates missing JSON resource files', async () => {
   const cwd = await projectWith('@Org/App', {
     'translationtools.yaml': yaml({ locales: ['en'] }),
     'translations/strings.json': `${JSON.stringify({ home_title: 'Home' }, null, 2)}\n`,
@@ -192,6 +192,63 @@ test('pull keeps local-only keys when prune is false and drops them when prune i
   }
 });
 
+test('prune on pull empties a JSON resource file whose origin is gone from TranslationTools', async () => {
+  const fake = await startFakeTranslationToolsHttp();
+
+  try {
+    fake.respond('GET', '/api/v1/translations/project', {
+      json: { locales: ['en'], defaultLocale: 'en' },
+    });
+    fake.respond('GET', '/api/v1/translations/en', {
+      json: [
+        {
+          origin: 'example-app:/translations/strings.json',
+          key: 'home_title',
+          value: 'Home remote',
+        },
+      ],
+    });
+
+    const withoutPrune = await projectWith('example-app', {
+      'translationtools.yaml': yaml({ prune: false }),
+      'translations/strings.json': `${JSON.stringify({ home_title: 'Home' }, null, 2)}\n`,
+      'translations/errors.json': `${JSON.stringify({ not_found: 'Keep me' }, null, 2)}\n`,
+    });
+    const keepResult = await runCli(['pull'], {
+      cwd: withoutPrune,
+      apiKey: 'key',
+      baseUrl: fake.baseUrl,
+    });
+    assert.equal(keepResult.exitCode, 0, keepResult.stderr);
+    assert.deepEqual(
+      JSON.parse(await readFile(path.join(withoutPrune, 'translations/errors.json'), 'utf8')),
+      { not_found: 'Keep me' },
+    );
+
+    const withPrune = await projectWith('example-app', {
+      'translationtools.yaml': yaml({ prune: true }),
+      'translations/strings.json': `${JSON.stringify({ home_title: 'Home' }, null, 2)}\n`,
+      'translations/errors.json': `${JSON.stringify({ not_found: 'Drop me' }, null, 2)}\n`,
+    });
+    const dropResult = await runCli(['pull'], {
+      cwd: withPrune,
+      apiKey: 'key',
+      baseUrl: fake.baseUrl,
+    });
+    assert.equal(dropResult.exitCode, 0, dropResult.stderr);
+    assert.deepEqual(
+      JSON.parse(await readFile(path.join(withPrune, 'translations/strings.json'), 'utf8')),
+      { home_title: 'Home remote' },
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(path.join(withPrune, 'translations/errors.json'), 'utf8')),
+      {},
+    );
+  } finally {
+    await fake.close();
+  }
+});
+
 test('TRANSLATIONTOOLS_API_KEY wins over yaml apiKey; yaml is used when env is unset', async () => {
   const fake = await startFakeTranslationToolsHttp();
 
@@ -279,7 +336,7 @@ test('pull skips generate when generated.enabled is false; generate still works'
   }
 });
 
-test('pull maps server TranslationTools keys back to JSON keys via keyOverrides', async () => {
+test('pull maps TranslationTools keys back to JSON keys via keyOverrides', async () => {
   const cwd = await projectWith('example-app', {
     'translationtools.yaml': yaml({
       keyOverrides: `\n    homeTitle: home_title`,

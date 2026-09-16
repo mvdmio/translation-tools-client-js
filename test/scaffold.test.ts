@@ -10,6 +10,10 @@ import { runCli } from './support/run-cli.ts';
 test('client package is importable', async () => {
   const mod = await import('@mvdmio/translation-tools-client');
   assert.equal(typeof mod, 'object');
+  assert.equal('parsePlaceholderSegments' in mod, false);
+  assert.equal('substitutePlaceholders' in mod, false);
+  assert.equal('createGlobalPlaceholderRegistry' in mod, false);
+  assert.equal(typeof mod.createClient, 'function');
 });
 
 test('client and CLI packages expose type declarations', async () => {
@@ -63,4 +67,16 @@ test('runCli spawns translationtools and captures exit code and stdout', async (
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /Usage: translationtools/);
   assert.equal(result.stderr, '');
+});
+
+test('unknown command exits non-zero', async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), 'translationtools-cli-'));
+  const result = await runCli(['nope'], {
+    cwd,
+    apiKey: 'unused',
+    baseUrl: 'http://127.0.0.1:9',
+  });
+
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /Unknown command: nope/);
 });
