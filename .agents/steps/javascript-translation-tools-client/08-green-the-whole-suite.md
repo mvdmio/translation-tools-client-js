@@ -1,6 +1,6 @@
 # 08 — Green the whole suite
 
-Status: pending
+Status: done
 Blocked by: 01, 02, 03, 04, 05, 06, 07
 
 ## What to build
@@ -24,7 +24,13 @@ Projects: packages/client, packages/cli
 
 ## Acceptance criteria
 
-- [ ] Root `npm test` is green for both packages.
-- [ ] Every case listed in the spec's Testing Decisions is asserted through the CLI process or the runtime module (or a focused origin test where HTTP is too coarse).
-- [ ] The CLI bin can be run without a global install.
-- [ ] A JS consumer and a TS consumer both look up a bundled string successfully.
+- [x] Root `npm test` is green for both packages.
+- [x] Every case listed in the spec's Testing Decisions is asserted through the CLI process or the runtime module (or a focused origin test where HTTP is too coarse).
+- [x] The CLI bin can be run without a global install.
+- [x] A JS consumer and a TS consumer both look up a bundled string successfully.
+
+## Outcome
+
+No product code changes. Suite gaps closed in `test/suite-green.test.ts`: consumer-shaped temp project with `devDependencies`/`dependencies` package.json + `node_modules` junction to workspace packages and an npm-style `.bin` shim; `translationtools` invoked via the linked package `dist/bin.js` (no global install); JS `.mjs` and TS (tsc → run) consumers both `createClient` + `get` a bundled string; push with `prune: false` keeps other-package remote origins in the POST body.
+
+Earlier steps already covered the rest of Testing Decisions (init/generate/pull/push/runtime HTTP). Root `npm test` runs build then `node --experimental-strip-types --test` over `test/**/*.test.ts` and `packages/*/test/**/*.test.ts` — 55 passing. Origin encoding deviation from step 05 stands: single-key GET uses `@org%2Fapp:%2Ftranslations%2Fstrings.json`. Out of scope (browsers, adapters, plurals, WebSocket, typed placeholders, publishing) stays untested by design.
