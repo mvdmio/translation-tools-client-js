@@ -13,5 +13,5 @@ export function createClient(options: TranslationToolsClientOptions): Translatio
     environment: normalized.environment,
     baseUrl: normalized.baseUrl,
   });
-  return new TranslationToolsClient(normalized, api);
+  return new TranslationToolsClient(normalized, api, normalized.now);
 }

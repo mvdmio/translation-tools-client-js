@@ -1,6 +1,6 @@
 # 05 — Refresh translations from TranslationTools
 
-Status: pending
+Status: done
 Blocked by: 02
 
 ## What to build
@@ -41,13 +41,19 @@ Projects: packages/client
 
 ## Acceptance criteria
 
-- [ ] `initialize` with no persisted snapshot and no bundled fallback does a blocking refresh; with bundled fallback and background refresh on, it serves bundled immediately and refreshes in the background.
-- [ ] `get` on a cache miss GETs `/api/v1/translations/{encodedOrigin}/{locale}/{key}` and then `getCached` hits.
-- [ ] Requests send the API key as raw `Authorization` (not `Bearer`).
-- [ ] Origin `@org/app:/translations/strings.json` is one path segment (`@org/app:%2Ftranslations%2Fstrings.json`).
-- [ ] Environment `staging` is appended on locale GET, single-key GET, and included on heartbeat.
-- [ ] Heartbeat POST body includes `platform: "node"` and a client id that survives a file-store restart.
-- [ ] Default snapshot store does not write files; the file store restores the last refresh after a new `createClient`/`initialize`.
-- [ ] When the network is down and nothing is persisted, bundled fallback still serves default-locale strings.
-- [ ] `observe` emits the new value after a refresh changes it.
-- [ ] `refreshIfStale` skips inside the default one-hour window and refreshes after it.
+- [x] `initialize` with no persisted snapshot and no bundled fallback does a blocking refresh; with bundled fallback and background refresh on, it serves bundled immediately and refreshes in the background.
+- [x] `get` on a cache miss GETs `/api/v1/translations/{encodedOrigin}/{locale}/{key}` and then `getCached` hits.
+- [x] Requests send the API key as raw `Authorization` (not `Bearer`).
+- [x] Origin `@org/app:/translations/strings.json` is one path segment (`@org/app:%2Ftranslations%2Fstrings.json`).
+- [x] Environment `staging` is appended on locale GET, single-key GET, and included on heartbeat.
+- [x] Heartbeat POST body includes `platform: "node"` and a client id that survives a file-store restart.
+- [x] Default snapshot store does not write files; the file store restores the last refresh after a new `createClient`/`initialize`.
+- [x] When the network is down and nothing is persisted, bundled fallback still serves default-locale strings.
+- [x] `observe` emits the new value after a refresh changes it.
+- [x] `refreshIfStale` skips inside the default one-hour window and refreshes after it.
+
+## Outcome
+
+Step 02 already shipped the network client path (`createHttpApi` / `TranslationToolsApi` in `http.ts`, initialize/refresh/get-on-miss/heartbeat/globals in `client.ts`, `noOpSnapshotStore`). This step added the opt-in file store and proved the HTTP surface with the shared fake.
+
+`TranslationSnapshotStores.file(path)` writes JSON to that path (creates parents; invalid JSON on load clears the file and returns null). Public export: `TranslationSnapshotStores` alongside `noOpSnapshotStore`. Heartbeat `version` is read from `packages/client/package.json`. Undocumented test clock: `options.now`. Path encoding matches Ktor `encodeURLPathPart` (pchar kept; `/` → `%2F`), so `@org/app:/translations/strings.json` becomes `@org%2Fapp:%2Ftranslations%2Fstrings.json` (the step criterion’s `@org/app:%2F…` omitted encoding the scoped `/`; Spec/KMP win). Coverage: `packages/client/test/refresh-from-translationtools.test.ts`.

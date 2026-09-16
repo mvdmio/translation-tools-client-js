@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { TranslationToolsValidationException } from './exceptions.js';
 import type { TranslationToolsApi } from './http.js';
 import {
@@ -20,7 +21,9 @@ import {
 
 const DEFAULT_LOCALE = 'en';
 const VALID_KEY_RE = /^[A-Za-z0-9._-]+$/;
-const CLIENT_VERSION = '0.0.0';
+const CLIENT_VERSION = (
+  createRequire(import.meta.url)('../package.json') as { version: string }
+).version;
 
 type LocaleMap = Map<string, Map<string, TranslationItem>>;
 

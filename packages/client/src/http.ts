@@ -5,6 +5,17 @@ import {
 } from './exceptions.js';
 import type { ProjectMetadata, TranslationItem, TranslationRef } from './models.js';
 
+/** RFC 3986 path-segment encoding (Ktor encodeURLPathPart): keep pchar, encode `/`. */
+const PATH_PART_SAFE = /[A-Za-z0-9\-._~!$&'()*+,;=:@]/;
+
+function encodeURLPathPart(value: string): string {
+  let encoded = '';
+  for (const char of value) {
+    encoded += PATH_PART_SAFE.test(char) ? char : encodeURIComponent(char);
+  }
+  return encoded;
+}
+
 export interface TranslationToolsApi {
   getProjectMetadata(): Promise<ProjectMetadata>;
   getLocale(locale: string): Promise<TranslationItem[]>;
@@ -83,9 +94,9 @@ export function createHttpApi(options: CreateHttpApiOptions): TranslationToolsAp
 
     async getLocale(locale: string): Promise<TranslationItem[]> {
       return execute(async () => {
-        const segments = ['api', 'v1', 'translations', encodeURIComponent(locale)];
+        const segments = ['api', 'v1', 'translations', encodeURLPathPart(locale)];
         if (environment) {
-          segments.push(encodeURIComponent(environment));
+          segments.push(encodeURLPathPart(environment));
         }
         const response = await fetchImpl(`${baseUrl}/${segments.join('/')}`, {
           headers: commonHeaders(),
@@ -106,12 +117,12 @@ export function createHttpApi(options: CreateHttpApiOptions): TranslationToolsAp
       defaultValue?: string | null,
     ): Promise<TranslationItem> {
       return execute(async () => {
-        const encodedOrigin = encodeURIComponent(ref.origin);
-        const encodedLocale = encodeURIComponent(locale);
-        const encodedKey = encodeURIComponent(ref.key);
+        const encodedOrigin = encodeURLPathPart(ref.origin);
+        const encodedLocale = encodeURLPathPart(locale);
+        const encodedKey = encodeURLPathPart(ref.key);
         let url = `${baseUrl}/api/v1/translations/${encodedOrigin}/${encodedLocale}/${encodedKey}`;
         if (environment) {
-          url += `/${encodeURIComponent(environment)}`;
+          url += `/${encodeURLPathPart(environment)}`;
         }
         if (defaultValue != null) {
           url += `?defaultValue=${encodeURIComponent(defaultValue)}`;

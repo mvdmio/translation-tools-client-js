@@ -21,6 +21,8 @@ export interface TranslationToolsClientOptions {
   throwOnPlaceholderError?: boolean;
   /** Undocumented override for tests. */
   baseUrl?: string;
+  /** Undocumented clock override for tests. */
+  now?: () => Date;
 }
 
 export interface NormalizedClientOptions {
@@ -37,6 +39,7 @@ export interface NormalizedClientOptions {
   readonly globalPlaceholders: Readonly<Record<string, () => string | null | undefined>>;
   readonly throwOnPlaceholderError: boolean;
   readonly baseUrl: string;
+  readonly now: () => Date;
 }
 
 export function normalizeClientOptions(
@@ -81,5 +84,6 @@ export function normalizeClientOptions(
     globalPlaceholders,
     throwOnPlaceholderError: options.throwOnPlaceholderError ?? false,
     baseUrl,
+    now: options.now ?? (() => new Date()),
   };
 }

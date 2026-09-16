@@ -19,7 +19,7 @@ export {
   normalizeClientOptions,
 } from './options.js';
 export type { TranslationSnapshotStore } from './snapshot-store.js';
-export { noOpSnapshotStore } from './snapshot-store.js';
+export { noOpSnapshotStore, TranslationSnapshotStores } from './snapshot-store.js';
 export {
   TranslationToolsException,
   TranslationToolsNetworkException,
