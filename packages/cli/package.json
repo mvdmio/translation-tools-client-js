@@ -1,0 +1,25 @@
+{
+  "name": "@mvdmio/translation-tools-cli",
+  "version": "0.0.0",
+  "description": "Translation Tools CLI for Node.js",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "translationtools": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/bin.d.ts",
+      "import": "./dist/bin.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

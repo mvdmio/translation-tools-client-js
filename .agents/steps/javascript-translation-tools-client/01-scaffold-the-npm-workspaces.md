@@ -1,6 +1,6 @@
 # 01 — Scaffold the npm workspaces
 
-Status: pending
+Status: done
 Blocked by: none
 
 ## What to build
@@ -29,8 +29,14 @@ Projects: packages/client, packages/cli
 
 ## Acceptance criteria
 
-- [ ] Root `npm test` exits 0.
-- [ ] Both packages typecheck as ESM and expose type declarations for importers.
-- [ ] The CLI bin name is `translationtools`.
-- [ ] A test can start the fake HTTP helper, send a GET, and see the recorded path and `Authorization` header.
-- [ ] A test can spawn the CLI in a temp folder and observe its exit code and stdout/stderr.
+- [x] Root `npm test` exits 0.
+- [x] Both packages typecheck as ESM and expose type declarations for importers.
+- [x] The CLI bin name is `translationtools`.
+- [x] A test can start the fake HTTP helper, send a GET, and see the recorded path and `Authorization` header.
+- [x] A test can spawn the CLI in a temp folder and observe its exit code and stdout/stderr.
+
+## Outcome
+
+npm workspaces root with `@mvdmio/translation-tools-client` (`packages/client`) and `@mvdmio/translation-tools-cli` (`packages/cli`). Both are ESM (`"type":"module"`), `engines.node` is `>=22`, and `tsc` emits `dist/*.js` plus adjacent `.d.ts`. Client `src/index.ts` is currently `export {}`. CLI entry is `packages/cli/src/bin.ts` → bin `translationtools` → `dist/bin.js`; `--help`/`-h`/no-args exit 0 with usage; other commands exit 1 with "not implemented".
+
+Root `npm test` runs `npm run build` then `node --experimental-strip-types --test` over `test/**/*.test.ts` and `packages/*/test/**/*.test.ts` (Node does not discover `.test.ts` via directory walk). Shared helpers: `startFakeTranslationToolsHttp()` in `test/support/fake-translation-tools-http.ts` (`baseUrl`, `requests`, `respond(method, path, json|handler)`, `close()`); `runCli(args, { cwd, env?, apiKey?, baseUrl? })` in `test/support/run-cli.ts` sets `TRANSLATIONTOOLS_API_KEY` / `TRANSLATIONTOOLS_BASE_URL` and spawns `packages/cli/dist/bin.js`. Scaffold coverage lives in `test/scaffold.test.ts`. Do not add a second HTTP fake in later steps.
