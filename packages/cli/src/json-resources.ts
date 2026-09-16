@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildOrigin } from './origin.js';
 
@@ -252,6 +252,90 @@ export function buildTranslationProject(
     locales,
     entries,
   };
+}
+
+/** Pretty-printed JSON resource file: sorted keys, 2-space indent, trailing newline. */
+export function formatJsonResource(entries: Readonly<Record<string, string>>): string {
+  const sorted: Record<string, string> = {};
+  for (const key of Object.keys(entries).sort((a, b) => a.localeCompare(b))) {
+    sorted[key] = entries[key]!;
+  }
+  return `${JSON.stringify(sorted, null, 2)}\n`;
+}
+
+export async function writeJsonResourceFile(
+  absolutePath: string,
+  entries: Readonly<Record<string, string>>,
+): Promise<void> {
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, formatJsonResource(entries), 'utf8');
+}
+
+/**
+ * Project-relative path of the locale file for a default-locale JSON resource path.
+ * Default locale keeps the unsuffixed name; others use `name.{locale}.json`.
+ */
+export function localeFileRelativePath(
+  defaultLocaleRelativePath: string,
+  locale: string,
+  defaultLocale: string,
+): string {
+  const normalizedLocale = locale.trim().toLowerCase();
+  const normalizedDefault = defaultLocale.trim().toLowerCase();
+  const posixPath = defaultLocaleRelativePath.split(path.sep).join('/');
+  if (normalizedLocale === normalizedDefault) {
+    return posixPath;
+  }
+
+  const slash = posixPath.lastIndexOf('/');
+  const directory = slash === -1 ? '' : posixPath.slice(0, slash + 1);
+  const fileName = slash === -1 ? posixPath : posixPath.slice(slash + 1);
+  if (!fileName.toLowerCase().endsWith('.json')) {
+    throw new Error(
+      `Default-locale resource path must end with .json (got ${JSON.stringify(defaultLocaleRelativePath)}).`,
+    );
+  }
+  const baseName = fileName.slice(0, -'.json'.length);
+  return `${directory}${baseName}.${normalizedLocale}.json`;
+}
+
+/**
+ * Merge server values into a local locale file map.
+ * prune=false keeps local-only keys; prune=true keeps only server keys for this write.
+ */
+export function mergeLocaleEntries(
+  existing: Readonly<Record<string, string>>,
+  incoming: Readonly<Record<string, string>>,
+  prune: boolean,
+): Record<string, string> {
+  if (prune) {
+    return { ...incoming };
+  }
+  return { ...existing, ...incoming };
+}
+
+/** Reverse jsonResources.keyOverrides (JSON key → TT key) to map server keys back to JSON keys. */
+export function reverseKeyOverrides(
+  keyOverrides: Readonly<Record<string, string>>,
+): Map<string, string> {
+  const reverse = new Map<string, string>();
+  for (const [jsonKey, translationKey] of Object.entries(keyOverrides)) {
+    const existing = reverse.get(translationKey);
+    if (existing !== undefined && existing !== jsonKey) {
+      throw new Error(
+        `Conflicting keyOverrides: JSON keys ${JSON.stringify(existing)} and ${JSON.stringify(jsonKey)} both map to TranslationTools key ${JSON.stringify(translationKey)}.`,
+      );
+    }
+    reverse.set(translationKey, jsonKey);
+  }
+  return reverse;
+}
+
+export function toJsonKey(
+  translationKey: string,
+  reverseOverrides: ReadonlyMap<string, string>,
+): string {
+  return reverseOverrides.get(translationKey) ?? translationKey;
 }
 
 function valueKind(value: unknown): string {

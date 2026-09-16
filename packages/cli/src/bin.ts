@@ -2,6 +2,7 @@
 
 import { runGenerate } from './generate.js';
 import { runInit } from './init.js';
+import { runPull } from './pull.js';
 
 const args = process.argv.slice(2);
 
@@ -40,6 +41,25 @@ Options:
     try {
       const result = await runGenerate(process.cwd());
       process.stdout.write(`Generated ${result.outputFile} (${result.typedKeyCount} typed keys)\n`);
+      process.exit(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Error: ${message}\n`);
+      process.exit(1);
+    }
+  }
+
+  if (command === 'pull') {
+    try {
+      const result = await runPull(process.cwd());
+      for (const file of result.writtenFiles) {
+        process.stdout.write(`Updated ${file}\n`);
+      }
+      if (result.generatedFile !== null) {
+        process.stdout.write(
+          `Generated ${result.generatedFile} (${result.typedKeyCount ?? 0} typed keys)\n`,
+        );
+      }
       process.exit(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
