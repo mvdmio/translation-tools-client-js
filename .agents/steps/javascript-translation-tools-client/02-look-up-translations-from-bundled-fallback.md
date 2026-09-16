@@ -1,6 +1,6 @@
 # 02 — Look up translations from bundled fallback
 
-Status: pending
+Status: done
 Blocked by: 01
 
 ## What to build
@@ -45,12 +45,20 @@ Projects: packages/client
 
 ## Acceptance criteria
 
-- [ ] `createClient` rejects a blank API key.
-- [ ] After `initialize` with a bundled snapshot and background refresh/heartbeat off, `get` / `getCached` return the bundled string for a typed key.
-- [ ] Explicit locale wins over provider, then project default, then `en`; locales are trimmed and lowercased.
-- [ ] A missing key returns bundled fallback, then the key; `nl` does not read `en`.
-- [ ] `getCached` does not call the network and does not substitute `{userName}`.
-- [ ] `get` substitutes `{userName}`, respects apostrophe escapes, applies global placeholders, and degrades unbound tokens to `{userName}`.
-- [ ] `observe` emits the current value; unsubscribing stops further emissions.
-- [ ] Invalid origin or key throws a validation error; a miss does not throw.
-- [ ] A JavaScript (non-TS) importer can `createClient` and `get` using the shipped types as optional.
+- [x] `createClient` rejects a blank API key.
+- [x] After `initialize` with a bundled snapshot and background refresh/heartbeat off, `get` / `getCached` return the bundled string for a typed key.
+- [x] Explicit locale wins over provider, then project default, then `en`; locales are trimmed and lowercased.
+- [x] A missing key returns bundled fallback, then the key; `nl` does not read `en`.
+- [x] `getCached` does not call the network and does not substitute `{userName}`.
+- [x] `get` substitutes `{userName}`, respects apostrophe escapes, applies global placeholders, and degrades unbound tokens to `{userName}`.
+- [x] `observe` emits the current value; unsubscribing stops further emissions.
+- [x] Invalid origin or key throws a validation error; a miss does not throw.
+- [x] A JavaScript (non-TS) importer can `createClient` and `get` using the shipped types as optional.
+
+## Outcome
+
+Runtime client lives in `packages/client`. Public entry: `createClient(options)` from `@mvdmio/translation-tools-client` (`src/create-client.ts` → re-exported by `src/index.ts`). Options require non-blank `apiKey`; undocumented `baseUrl` defaults to `https://translations.mvdm.io`. Intervals are `refreshIntervalMs` / `heartbeatIntervalMs` (default 1h). `TranslationStringResource` has no `managedRemotely`. `StoredTranslations.lastSuccessfulRefreshAt` is an ISO-8601 `string | null` (not a Date).
+
+`initialize` restores snapshot store then `bundledSnapshot`, mints `clientId`, fire-and-forgets globals push when globals are registered, then blocking refresh only if nothing restored; otherwise optional background refresh. Tests use `backgroundRefreshEnabled: false` and `heartbeatEnabled: false`. `get` is async and fetches one ref on cache miss (HTTP proven further in step 05); `getCached` is sync and never fetches/substitutes. `observe(target, locale?, listener)` returns an unsubscribe function (callback style, not async iterable). `dispose()` clears heartbeat + listeners.
+
+Footprint additions beyond the step guess (needed for createClient/initialize and reused by step 05): `src/http.ts` (`createHttpApi` / `TranslationToolsApi`), `src/snapshot-store.ts` (`noOpSnapshotStore`), `src/create-client.ts`. Placeholder engine is `src/placeholders.ts` (KMP apostrophe/`{camelCase}` rules). Coverage: `packages/client/test/bundled-fallback.test.ts`.
