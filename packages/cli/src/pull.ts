@@ -18,13 +18,40 @@ import {
   originMatchesPackage,
   readPackageName,
 } from './origin.js';
-import { splitTranslationRefKey, translationRefKey } from './translation-ref.js';
 
 export type PullResult = {
   writtenFiles: string[];
   generatedFile: string | null;
   typedKeyCount: number | null;
 };
+
+type OriginPull = {
+  defaultLocaleRelativePath: string;
+  /** TranslationTools key -> locale -> value. */
+  valuesByKey: Map<string, Map<string, string | null>>;
+  /** Locales that exist as JSON resource files for this origin. Used when prune is on. */
+  localLocales: Set<string>;
+};
+
+function originPull(defaultLocaleRelativePath: string): OriginPull {
+  return {
+    defaultLocaleRelativePath,
+    valuesByKey: new Map(),
+    localLocales: new Set(),
+  };
+}
+
+function ensureOriginPull(
+  origins: Map<string, OriginPull>,
+  defaultLocaleRelativePath: string,
+): OriginPull {
+  let work = origins.get(defaultLocaleRelativePath);
+  if (!work) {
+    work = originPull(defaultLocaleRelativePath);
+    origins.set(defaultLocaleRelativePath, work);
+  }
+  return work;
+}
 
 export async function runPull(
   cwd: string,
@@ -50,65 +77,42 @@ export async function runPull(
     throw new Error('TranslationTools project has no locales configured.');
   }
 
-  const itemsByOriginKey = new Map<string, Map<string, string | null>>();
+  const prune = config.jsonResources.prune;
+  const originsToWrite = new Map<string, OriginPull>();
+
   for (const locale of locales) {
     const items = await http.getLocale(locale);
     for (const item of items) {
       if (!originMatchesPackage(item.origin, packageName)) {
         continue;
       }
-      const mapKey = translationRefKey(item.origin, item.key);
-      let byLocale = itemsByOriginKey.get(mapKey);
+      const defaultLocaleRelativePath = defaultLocaleRelativePathFromOrigin(
+        item.origin,
+        packageName,
+      );
+      if (defaultLocaleRelativePath === null) {
+        continue;
+      }
+      const work = ensureOriginPull(originsToWrite, defaultLocaleRelativePath);
+      let byLocale = work.valuesByKey.get(item.key);
       if (!byLocale) {
         byLocale = new Map();
-        itemsByOriginKey.set(mapKey, byLocale);
+        work.valuesByKey.set(item.key, byLocale);
       }
       byLocale.set(locale, item.value);
     }
   }
 
-  const remoteByOrigin = new Map<
-    string,
-    { key: string; valuesByLocale: Map<string, string | null> }[]
-  >();
-  for (const [mapKey, valuesByLocale] of itemsByOriginKey) {
-    const { origin, key } = splitTranslationRefKey(mapKey);
-    const list = remoteByOrigin.get(origin) ?? [];
-    list.push({ key, valuesByLocale });
-    remoteByOrigin.set(origin, list);
-  }
-
-  const prune = config.jsonResources.prune;
-  const localFiles = prune
-    ? await discoverJsonResourceFiles(
-        cwd,
-        config.jsonResources.resourceDirectories,
-        config.defaultLocale,
-      )
-    : [];
-
-  type OriginPull = {
-    defaultLocaleRelativePath: string;
-    entries: { key: string; valuesByLocale: Map<string, string | null> }[];
-  };
-
-  const originsToWrite = new Map<string, OriginPull>();
-  for (const [origin, entries] of remoteByOrigin) {
-    const defaultLocaleRelativePath = defaultLocaleRelativePathFromOrigin(origin, packageName);
-    if (defaultLocaleRelativePath === null) {
-      continue;
-    }
-    originsToWrite.set(defaultLocaleRelativePath, { defaultLocaleRelativePath, entries });
-  }
-
   if (prune) {
+    const localFiles = await discoverJsonResourceFiles(
+      cwd,
+      config.jsonResources.resourceDirectories,
+      config.defaultLocale,
+    );
     for (const file of localFiles) {
-      if (!originsToWrite.has(file.defaultLocaleRelativePath)) {
-        originsToWrite.set(file.defaultLocaleRelativePath, {
-          defaultLocaleRelativePath: file.defaultLocaleRelativePath,
-          entries: [],
-        });
-      }
+      ensureOriginPull(originsToWrite, file.defaultLocaleRelativePath).localLocales.add(
+        file.locale,
+      );
     }
   }
 
@@ -117,27 +121,19 @@ export async function runPull(
   for (const work of [...originsToWrite.values()].sort((a, b) =>
     a.defaultLocaleRelativePath.localeCompare(b.defaultLocaleRelativePath),
   )) {
-    const localesForOrigin = new Set(locales);
-    if (prune) {
-      for (const file of localFiles) {
-        if (file.defaultLocaleRelativePath === work.defaultLocaleRelativePath) {
-          localesForOrigin.add(file.locale);
-        }
-      }
-    }
+    const localesForOrigin = new Set([...locales, ...work.localLocales]);
 
     for (const locale of [...localesForOrigin].sort((a, b) => a.localeCompare(b))) {
       const incoming: Record<string, string> = {};
-      for (const entry of work.entries) {
-        if (!entry.valuesByLocale.has(locale)) {
+      for (const [key, valuesByLocale] of work.valuesByKey) {
+        if (!valuesByLocale.has(locale)) {
           continue;
         }
-        const value = entry.valuesByLocale.get(locale);
+        const value = valuesByLocale.get(locale);
         if (value == null) {
           continue;
         }
-        const jsonKey = toJsonKey(entry.key, reverseOverrides);
-        incoming[jsonKey] = value;
+        incoming[toJsonKey(key, reverseOverrides)] = value;
       }
 
       const relativePath = jsonResourceRelativePath(
