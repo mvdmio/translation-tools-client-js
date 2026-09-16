@@ -1,6 +1,6 @@
 # 03 — Init config and starter JSON resource files
 
-Status: pending
+Status: done
 Blocked by: 01
 
 ## What to build
@@ -43,7 +43,13 @@ Projects: packages/cli
 
 ## Acceptance criteria
 
-- [ ] `translationtools init` in a folder with `package.json` and no yaml/JSON writes `translationtools.yaml` next to `package.json` and `translations/strings.json`.
-- [ ] The yaml includes apiKey, defaultLocale, locales, generated.enabled, generated.path, jsonResources.resourceDirectories, prune, and keyOverrides.
-- [ ] A second `init` exits non-zero and leaves the existing files unchanged.
-- [ ] Init does not send HTTP and does not require `TRANSLATIONTOOLS_API_KEY`.
+- [x] `translationtools init` in a folder with `package.json` and no yaml/JSON writes `translationtools.yaml` next to `package.json` and `translations/strings.json`.
+- [x] The yaml includes apiKey, defaultLocale, locales, generated.enabled, generated.path, jsonResources.resourceDirectories, prune, and keyOverrides.
+- [x] A second `init` exits non-zero and leaves the existing files unchanged.
+- [x] Init does not send HTTP and does not require `TRANSLATIONTOOLS_API_KEY`.
+
+## Outcome
+
+`translationtools init` is implemented in `packages/cli`. `bin.ts` dispatches `init` to `runInit(cwd)` in `init.ts`, which writes `translationtools.yaml` and `translations/strings.json` (`{ "home_title": "Home" }`) under cwd. If either path already exists, init exits 1, writes neither, and does not overwrite. Init never reads `TRANSLATIONTOOLS_API_KEY` and never opens HTTP.
+
+`config.ts` owns the yaml shape (`jsonResources` not `androidResources`), starter render helpers, `parseConfig` / `loadConfig`, and `resolveApiKey` (env then yaml). Defaults when omitted: `defaultLocale` `en`, `generated.enabled` true, `generated.path` `translations/generated.ts`, `resourceDirectories` `['translations']`, `prune` false, `keyOverrides` `{}`. Present `snapshotFile` or `generated.objectName` throw (same rejection as KMP). CLI depends on `yaml` for parsing. Init itself only writes the starter string; later steps call `loadConfig`. Tests: `packages/cli/test/init.test.ts` via `runCli` (empty project, existing yaml, existing JSON, second init; fake HTTP asserts zero requests).
