@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { runGenerate } from './generate.js';
 import { runInit } from './init.js';
 
 const args = process.argv.slice(2);
@@ -27,6 +28,18 @@ Options:
       const result = await runInit(process.cwd());
       process.stdout.write(`Created ${result.configFile}\n`);
       process.stdout.write(`Created ${result.starterJsonFile}\n`);
+      process.exit(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Error: ${message}\n`);
+      process.exit(1);
+    }
+  }
+
+  if (command === 'generate') {
+    try {
+      const result = await runGenerate(process.cwd());
+      process.stdout.write(`Generated ${result.outputFile} (${result.typedKeyCount} typed keys)\n`);
       process.exit(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

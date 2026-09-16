@@ -1,6 +1,6 @@
 # 04 — Generate typed keys and bundled fallback
 
-Status: pending
+Status: done
 Blocked by: 02, 03
 
 ## What to build
@@ -45,11 +45,19 @@ Projects: packages/cli, packages/client
 
 ## Acceptance criteria
 
-- [ ] `generate` with no API key writes `translations/generated.ts` that typechecks against the runtime package.
-- [ ] A typed key's `ref.origin` is `{lowercase package name}:/{path}`; `ref.key` is the JSON key (or override).
-- [ ] `home.title` and `home-title` both appear; sanitized names collide with a stable suffix; original keys are preserved on the refs.
-- [ ] Nested JSON, non-string values, and keys outside `^[A-Za-z0-9._-]+$` fail generate with a non-zero exit.
-- [ ] Empty JSON produces no typed keys.
-- [ ] A scoped `package.json` name is kept in origin; a name containing `:` fails; a missing name fails clearly.
-- [ ] `strings.json` and `strings.nl.json` share one origin; `errors.json` is a second origin.
-- [ ] Docs state that renaming the npm package changes origins.
+- [x] `generate` with no API key writes `translations/generated.ts` that typechecks against the runtime package.
+- [x] A typed key's `ref.origin` is `{lowercase package name}:/{path}`; `ref.key` is the JSON key (or override).
+- [x] `home.title` and `home-title` both appear; sanitized names collide with a stable suffix; original keys are preserved on the refs.
+- [x] Nested JSON, non-string values, and keys outside `^[A-Za-z0-9._-]+$` fail generate with a non-zero exit.
+- [x] Empty JSON produces no typed keys.
+- [x] A scoped `package.json` name is kept in origin; a name containing `:` fails; a missing name fails clearly.
+- [x] `strings.json` and `strings.nl.json` share one origin; `errors.json` is a second origin.
+- [x] Docs state that renaming the npm package changes origins.
+
+## Outcome
+
+`translationtools generate` is implemented in `packages/cli`. `bin.ts` dispatches to `runGenerate(cwd)` in `generate.ts`, which loads yaml via `loadConfig`, reads `package.json` name via `origin.ts`, discovers flat JSON under `jsonResources.resourceDirectories`, and writes one TypeScript module at `generated.path` (default `translations/generated.ts`). No API key. No HTTP.
+
+Origin is `{packageName}:/{posix relative path to default-locale file}`, then lowercased (`@Org/App` → `@org/app:/translations/strings.json`). Locale files match `name.{locale}.json` where locale is `[a-z]{2}(?:-[a-z0-9]+)*`; they share the default-locale origin. `keyOverrides` map JSON key → `TranslationRef.key`; the typed identifier is always sanitized from the JSON key. Collision suffix is `__` + first 8 hex of SHA-256(`origin + NUL + jsonKey`); both colliding names get a suffix. Invalid TT keys, nested/non-string JSON, `:` in package name, and missing package name fail with exit 1.
+
+Generated module exports `Translations` (entries use `satisfies TranslationStringResource`) and `TranslationsBundledSnapshot: StoredTranslations` with `lastSuccessfulRefreshAt: null` and snapshots for every discovered locale. Rename-origins note lives in `packages/cli/README.md`. Helpers: `json-resources.ts`, `sanitize.ts`, `origin.ts`. Tests: `packages/cli/test/generate.test.ts` (CLI process + tsc against the workspace client package). Client package unchanged; types already exported from step 02.
