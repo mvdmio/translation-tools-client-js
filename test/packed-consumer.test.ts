@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
   access,
   mkdtemp,
@@ -14,9 +15,33 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
-const nodeDir = path.dirname(process.execPath);
-const npmCliJs = path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
-const npxCliJs = path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npx-cli.js');
+const npmCliJs = resolveNpmCli('npm-cli.js');
+const npxCliJs = resolveNpmCli('npx-cli.js');
+
+/** Windows: <node>/node_modules/npm/bin. Unix: <prefix>/lib/node_modules/npm/bin. */
+function resolveNpmCli(cliFile: 'npm-cli.js' | 'npx-cli.js'): string {
+  const fromExecPath = process.env.npm_execpath;
+  if (fromExecPath) {
+    const sibling = path.join(path.dirname(fromExecPath), cliFile);
+    if (existsSync(sibling)) {
+      return sibling;
+    }
+    if (cliFile === 'npm-cli.js' && existsSync(fromExecPath)) {
+      return fromExecPath;
+    }
+  }
+
+  const nodeDir = path.dirname(process.execPath);
+  const candidates = [
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', cliFile),
+    path.join(path.dirname(nodeDir), 'lib', 'node_modules', 'npm', 'bin', cliFile),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (found === undefined) {
+    throw new Error(`Cannot find ${cliFile}; tried ${candidates.join(', ')}`);
+  }
+  return found;
+}
 
 type SpawnResult = {
   exitCode: number | null;
