@@ -1,6 +1,6 @@
 # 02 — Tag-and-publish from GitHub Actions
 
-Status: pending
+Status: done
 Blocked by: 01
 
 ## What to build
@@ -28,12 +28,16 @@ Projects: translation-tools-client-js
 
 ## Acceptance criteria
 
-- [ ] A workflow runs the existing test suite on push and pull request to `master`, on Ubuntu, with Node 22.
-- [ ] `publish.translationtools-packages-npm.yml` runs on tags matching `v*`, on Ubuntu, with Node 22, runs the tests first, then publishes only `@mvdmio/translation-tools-client` and `@mvdmio/translation-tools-cli` with provenance and public access.
-- [ ] Publish authenticates with npm trusted publishing: `id-token` is available to the job; no npm token is stored in GitHub secrets.
-- [ ] When the tag without `v` equals both package versions, the tag check succeeds; when it does not, the check fails and publish does not run.
-- [ ] Tests cover that matching and mismatching tag check without parsing workflow YAML and without calling npm or GitHub.
-- [ ] Pushing `master` without a tag does not publish (test workflow has no publish job; publish workflow is tag-only).
-- [ ] Root README documents: bump both versions together, update the changelog, commit, tag `vX.Y.Z`, push the tag.
-- [ ] ADR-0004 still says publish is only from GitHub Actions with trusted publishing.
-- [ ] The whole suite stays green, including step 01's packed-consumer coverage.
+- [x] A workflow runs the existing test suite on push and pull request to `master`, on Ubuntu, with Node 22.
+- [x] `publish.translationtools-packages-npm.yml` runs on tags matching `v*`, on Ubuntu, with Node 22, runs the tests first, then publishes only `@mvdmio/translation-tools-client` and `@mvdmio/translation-tools-cli` with provenance and public access.
+- [x] Publish authenticates with npm trusted publishing: `id-token` is available to the job; no npm token is stored in GitHub secrets.
+- [x] When the tag without `v` equals both package versions, the tag check succeeds; when it does not, the check fails and publish does not run.
+- [x] Tests cover that matching and mismatching tag check without parsing workflow YAML and without calling npm or GitHub.
+- [x] Pushing `master` without a tag does not publish (test workflow has no publish job; publish workflow is tag-only).
+- [x] Root README documents: bump both versions together, update the changelog, commit, tag `vX.Y.Z`, push the tag.
+- [x] ADR-0004 still says publish is only from GitHub Actions with trusted publishing.
+- [x] The whole suite stays green, including step 01's packed-consumer coverage.
+
+## Outcome
+
+`.github/workflows/test.yml` runs `npm ci` + `npm test` on push and pull_request to `master` (Ubuntu, Node 22). `.github/workflows/publish.translationtools-packages-npm.yml` is tag-only (`v*`), sets `permissions.id-token: write` (no npm token secret), upgrades npm to `^11.5.1` for trusted publishing, runs tests, then `node scripts/assert-release-tag.js "${{ github.ref_name }}"`, then `npm publish -w` each of `@mvdmio/translation-tools-client` and `@mvdmio/translation-tools-cli` with `--access public --provenance`. `scripts/assert-release-tag.js` exports `assertReleaseTag(tag, { root })` for tests and, as CLI, takes argv or `GITHUB_REF_NAME`. `test/assert-release-tag.test.ts` covers match, mismatch, and split package versions against temp workspace roots (no workflow YAML parsing). Root README documents the bump/changelog/commit/tag/push recipe. ADR-0004 needed no edit. Footprint matched; suite 64/64 green. `CHANGELOG.md` still untouched (Step 01 deviation) — Step 03 must land `## 0.1.0` before live publish.

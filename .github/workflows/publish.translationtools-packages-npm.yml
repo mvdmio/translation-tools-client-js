@@ -1,0 +1,41 @@
+name: Publish TranslationTools Packages (npm)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      # Trusted publishing needs npm >= 11.5.1
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Assert release tag matches both package versions
+        run: node scripts/assert-release-tag.js "${{ github.ref_name }}"
+
+      - name: Publish @mvdmio/translation-tools-client
+        run: npm publish -w @mvdmio/translation-tools-client --access public --provenance
+
+      - name: Publish @mvdmio/translation-tools-cli
+        run: npm publish -w @mvdmio/translation-tools-cli --access public --provenance
