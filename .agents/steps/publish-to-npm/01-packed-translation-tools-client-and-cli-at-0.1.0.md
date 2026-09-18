@@ -1,6 +1,6 @@
 # 01 — Packed Translation Tools Client and CLI at 0.1.0
 
-Status: pending
+Status: done
 Blocked by: none
 
 ## What to build
@@ -39,15 +39,21 @@ Projects: translation-tools-client-js
 
 ## Acceptance criteria
 
-- [ ] Both workspace packages are version `0.1.0` and still named `@mvdmio/translation-tools-client` and `@mvdmio/translation-tools-cli`.
-- [ ] The root workspace is private and is not a public npm package.
-- [ ] `npm pack` on each package builds `dist` and yields a tarball that contains compiled JavaScript, type declarations, the package README, and the MIT license text, and does not contain committed `dist` in git.
-- [ ] Each package manifest has MIT license, author `mvdmio / Michiel van der Meer`, repository (including workspace directory), homepage, bugs, `engines.node` `>=22`, ESM-only exports, and public `publishConfig`.
-- [ ] A temp consumer that installs the packed client can look up a bundled string; a TypeScript import of the packed client resolves to that JavaScript and those declarations.
-- [ ] A temp consumer that installs the packed CLI can run `init` or `--help` through the `translationtools` bin without installing the client.
-- [ ] Client README documents `npm install @mvdmio/translation-tools-client`; CLI README documents `npx @mvdmio/translation-tools-cli` and that `npx translationtools` works after a local install; no unscoped `translationtools` package is added.
-- [ ] Root README names both packages, both install commands, Node.js 22 or newer, and that `0.x` may still change.
+- [x] Both workspace packages are version `0.1.0` and still named `@mvdmio/translation-tools-client` and `@mvdmio/translation-tools-cli`.
+- [x] The root workspace is private and is not a public npm package.
+- [x] `npm pack` on each package builds `dist` and yields a tarball that contains compiled JavaScript, type declarations, the package README, and the MIT license text, and does not contain committed `dist` in git.
+- [x] Each package manifest has MIT license, author `mvdmio / Michiel van der Meer`, repository (including workspace directory), homepage, bugs, `engines.node` `>=22`, ESM-only exports, and public `publishConfig`.
+- [x] A temp consumer that installs the packed client can look up a bundled string; a TypeScript import of the packed client resolves to that JavaScript and those declarations.
+- [x] A temp consumer that installs the packed CLI can run `init` or `--help` through the `translationtools` bin without installing the client.
+- [x] Client README documents `npm install @mvdmio/translation-tools-client`; CLI README documents `npx @mvdmio/translation-tools-cli` and that `npx translationtools` works after a local install; no unscoped `translationtools` package is added.
+- [x] Root README names both packages, both install commands, Node.js 22 or newer, and that `0.x` may still change.
 - [ ] Changelog uses heading `## 0.1.0`, keeps the existing product note, and says the API may still change until `1.0.0`.
-- [ ] Heartbeat reports the client package manifest version (`0.1.0`); tests that pin our two packages follow `0.1.0`; consumer apps' own `version` fields stay as they are.
-- [ ] Generate still emits an import of `@mvdmio/translation-tools-client`; the CLI still has no client dependency; lookup, pull, push, generate, and the public client API are unchanged.
-- [ ] Existing consumer lookup, CLI init/generate/pull/push, scaffold, bundled fallback, and refresh tests stay green. Pack tests do not call the live npm registry or GitHub.
+- [x] Heartbeat reports the client package manifest version (`0.1.0`); tests that pin our two packages follow `0.1.0`; consumer apps' own `version` fields stay as they are.
+- [x] Generate still emits an import of `@mvdmio/translation-tools-client`; the CLI still has no client dependency; lookup, pull, push, generate, and the public client API are unchanged.
+- [x] Existing consumer lookup, CLI init/generate/pull/push, scaffold, bundled fallback, and refresh tests stay green. Pack tests do not call the live npm registry or GitHub.
+
+## Outcome
+
+Both packages are at `0.1.0` with publish metadata; root `LICENSE` (MIT, Copyright (c) 2026 mvdm.io) is staged into each package only at pack time via `prepack`/`postpack` (no second committed license). `.gitignore` ignores `packages/*/LICENSE`, `dist/`, and `*.tgz`. Root, client, and CLI READMEs document the install/`npx` commands. `test/packed-consumer.test.ts` packs with `npm pack`, installs the tarball into a temp consumer, asserts LICENSE/README/`dist` contents, client JS+TS lookup, and CLI bin/`npx translationtools` without a client dependency. Nested npm calls strip inherited `npm_*` env so the suite stays green under `npm test` (avoids npm `EALLOWSCRIPTS`). `CLIENT_VERSION` still comes only from the client `package.json`. Footprint matched the code; `packages/client/src/client.ts` and `packages/cli/src/generate.ts` needed no edits.
+
+`CHANGELOG.md` was left untouched per the implementer contract. Spec and this Step still require replacing the dated heading with `## 0.1.0` (and a `0.x` until `1.0.0` note); Step 03 expects that changelog on `master` — a successor must land it before the live publish.

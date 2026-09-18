@@ -125,7 +125,7 @@ test('npx-style translationtools bin works from a consumer-shaped temp project',
         private: true,
         type: 'module',
         devDependencies: {
-          '@mvdmio/translation-tools-cli': '0.0.0',
+          '@mvdmio/translation-tools-cli': '0.1.0',
         },
       },
       null,
@@ -182,7 +182,7 @@ test('JavaScript consumer looks up a bundled string without using types', async 
         private: true,
         type: 'module',
         dependencies: {
-          '@mvdmio/translation-tools-client': '0.0.0',
+          '@mvdmio/translation-tools-client': '0.1.0',
         },
       },
       null,
@@ -230,7 +230,7 @@ test('TypeScript consumer looks up a bundled string successfully', async () => {
         private: true,
         type: 'module',
         dependencies: {
-          '@mvdmio/translation-tools-client': '0.0.0',
+          '@mvdmio/translation-tools-client': '0.1.0',
         },
       },
       null,

@@ -1,10 +1,24 @@
 {
   "name": "@mvdmio/translation-tools-client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Translation Tools Client for Node.js",
   "type": "module",
+  "license": "MIT",
+  "author": "mvdmio / Michiel van der Meer",
   "engines": {
     "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mvdmio/translation-tools-client-js.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/mvdmio/translation-tools-client-js#readme",
+  "bugs": {
+    "url": "https://github.com/mvdmio/translation-tools-client-js/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "exports": {
     ".": {
@@ -17,6 +31,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build && node --input-type=module -e \"import { copyFileSync } from 'node:fs'; import path from 'node:path'; copyFileSync(path.resolve('../../LICENSE'), 'LICENSE');\"",
+    "postpack": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('LICENSE', { force: true });\""
   }
 }

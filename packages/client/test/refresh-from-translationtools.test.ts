@@ -207,7 +207,7 @@ test('requests send raw Authorization and environment on locale, single-key, and
     assert.equal(body.environment, 'staging');
     assert.equal(body.platform, 'node');
     assert.ok(body.clientId);
-    assert.equal(body.version, '0.0.0');
+    assert.equal(body.version, '0.1.0');
     client.dispose();
   } finally {
     await fake.close();
