@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:tests",
-    "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "typecheck:tests": "npm run build && tsc -p tsconfig.tests.json",
     "test": "npm run build && npm run typecheck:tests && node --experimental-strip-types --test \"test/**/*.test.ts\" \"packages/*/test/**/*.test.ts\""
   },
   "devDependencies": {
