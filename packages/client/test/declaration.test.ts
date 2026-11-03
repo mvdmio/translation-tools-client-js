@@ -152,6 +152,7 @@ test('a restored cache does not change what is declared', async () => {
           lastSuccessfulRefreshAt: '2026-03-25T10:00:00.000Z',
         }),
         save: async () => {},
+        clear: async () => {},
       },
       backgroundRefreshEnabled: false,
       heartbeatEnabled: false,
