@@ -3,8 +3,12 @@ import {
   TranslationToolsNetworkException,
   TranslationToolsSerializationException,
 } from './exceptions.js';
-import type { DeclarationItem } from './declaration.js';
-import type { ProjectMetadata, TranslationItem, TranslationRef } from './models.js';
+import type {
+  DeclarationItem,
+  ProjectMetadata,
+  TranslationItem,
+  TranslationRef,
+} from './models.js';
 
 /** RFC 3986 path-segment encoding (Ktor encodeURLPathPart): keep pchar, encode `/`. */
 const PATH_PART_SAFE = /[A-Za-z0-9\-._~!$&'()*+,;=:@]/;

@@ -1,12 +1,5 @@
-import type { StoredTranslations } from './models.js';
+import type { DeclarationItem, StoredTranslations } from './models.js';
 import { normalizeLocale, translationRefKey } from './refs.js';
-
-export interface DeclarationItem {
-  readonly origin: string;
-  readonly locale: string;
-  readonly key: string;
-  readonly value: string;
-}
 
 /**
  * The Keys a bundled snapshot ships, as Declaration items: one per origin, locale, and key with a

@@ -30,6 +30,14 @@ export interface StoredTranslations {
   readonly clientId?: string | null;
 }
 
+/** One Key in one locale as sent in a Declaration. */
+export interface DeclarationItem {
+  readonly origin: string;
+  readonly locale: string;
+  readonly key: string;
+  readonly value: string;
+}
+
 export type TranslationRefreshStatus =
   | 'idle'
   | 'restoringCache'

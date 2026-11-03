@@ -6,6 +6,7 @@ import {
   type StoredTranslations,
 } from '@mvdmio/translation-tools-client';
 import { startFakeTranslationToolsHttp } from '../../../test/support/fake-translation-tools-http.ts';
+import { waitFor } from '../../../test/support/wait-for.ts';
 
 const ORIGIN = '@org/app:/translations/strings.json';
 const DECLARATION_PATH = '/api/v1/translations/declaration';
@@ -40,14 +41,36 @@ function declarationRequests(fake: Awaited<ReturnType<typeof startFakeTranslatio
   return fake.requests.filter((request) => request.path === DECLARATION_PATH);
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
-  const started = Date.now();
-  while (!predicate()) {
-    if (Date.now() - started > timeoutMs) {
-      throw new Error('Timed out waiting for condition');
+/**
+ * Replaces `globalThis.fetch` and records the URL of every Declaration call. The client binds
+ * `globalThis.fetch` when it is created, so install this before `createClient`. Calls pass
+ * through to the real `fetch` unless `rejectDeclarations` is set, which fails them the way
+ * `fetch` fails on a network error.
+ */
+function interceptFetch() {
+  const original = globalThis.fetch;
+  const intercept = {
+    declarationCalls: [] as string[],
+    rejectDeclarations: false,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+  globalThis.fetch = ((input, init) => {
+    if (String(input).endsWith(DECLARATION_PATH)) {
+      intercept.declarationCalls.push(String(input));
+      if (intercept.rejectDeclarations) {
+        return Promise.reject(new TypeError('fetch failed'));
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+    return original(input, init);
+  }) as typeof globalThis.fetch;
+  return intercept;
+}
+
+/** Yields to the event loop once, so every pending promise step has run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 test('initialize declares the bundled snapshot keys under the environment', async () => {
@@ -152,6 +175,7 @@ test('a restored cache does not change what is declared', async () => {
 
 test('no declaration is sent without a bundled snapshot or without items', async () => {
   const fake = await startFakeTranslationToolsHttp();
+  const intercept = interceptFetch();
   try {
     fake.respond('GET', '/api/v1/translations/project', {
       json: { locales: ['en'], defaultLocale: 'en' },
@@ -165,6 +189,8 @@ test('no declaration is sent without a bundled snapshot or without items', async
       baseUrl: fake.baseUrl,
     });
     await withoutBundled.initialize();
+    await settle();
+    assert.deepEqual(intercept.declarationCalls, []);
     withoutBundled.dispose();
 
     const empty = createClient({
@@ -180,11 +206,13 @@ test('no declaration is sent without a bundled snapshot or without items', async
       baseUrl: fake.baseUrl,
     });
     await empty.initialize();
+    await settle();
     empty.dispose();
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(intercept.declarationCalls, []);
     assert.equal(declarationRequests(fake).length, 0);
   } finally {
+    intercept.restore();
     await fake.close();
   }
 });
@@ -201,6 +229,7 @@ test('initialize resolves and logs nothing when the declaration fails', async ()
   console.error = (...args) => void logged.push(args);
 
   const fake = await startFakeTranslationToolsHttp();
+  const intercept = interceptFetch();
   try {
     fake.respond('POST', DECLARATION_PATH, { status: 500, json: { error: 'boom' } });
     const httpFailure = createClient({
@@ -213,20 +242,25 @@ test('initialize resolves and logs nothing when the declaration fails', async ()
     });
     await httpFailure.initialize();
     await waitFor(() => declarationRequests(fake).length === 1);
+    await settle();
     httpFailure.dispose();
 
+    intercept.rejectDeclarations = true;
     const networkFailure = createClient({
       apiKey: 'test-api-key',
       bundledSnapshot: bundledSnapshot(),
       snapshotStore: noOpSnapshotStore,
       backgroundRefreshEnabled: false,
       heartbeatEnabled: false,
-      baseUrl: 'http://127.0.0.1:9',
+      baseUrl: fake.baseUrl,
     });
     await networkFailure.initialize();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitFor(() => intercept.declarationCalls.length === 2);
+    await settle();
     networkFailure.dispose();
+    assert.equal(declarationRequests(fake).length, 1);
   } finally {
+    intercept.restore();
     Object.assign(console, originals);
     await fake.close();
   }

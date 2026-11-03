@@ -26,6 +26,14 @@ async function projectWith(
   return cwd;
 }
 
+function recordedRequests(fake: Awaited<ReturnType<typeof startFakeTranslationToolsHttp>>) {
+  return fake.requests.map((request) => ({
+    method: request.method,
+    path: request.path,
+    bodyText: request.bodyText,
+  }));
+}
+
 function yaml(options?: {
   apiKey?: string;
   prune?: boolean;
@@ -181,11 +189,7 @@ test('jsonResources.prune true sends the same push request as false', async () =
       baseUrl: fake.baseUrl,
     });
     assert.equal(keepResult.exitCode, 0, keepResult.stderr);
-    const withoutPruneRequests = fake.requests.map((request) => ({
-      method: request.method,
-      path: request.path,
-      bodyText: request.bodyText,
-    }));
+    const withoutPruneRequests = recordedRequests(fake);
 
     fake.requests.length = 0;
     const withPrune = await projectWith('example-app', {
@@ -198,11 +202,7 @@ test('jsonResources.prune true sends the same push request as false', async () =
       baseUrl: fake.baseUrl,
     });
     assert.equal(pruneResult.exitCode, 0, pruneResult.stderr);
-    const withPruneRequests = fake.requests.map((request) => ({
-      method: request.method,
-      path: request.path,
-      bodyText: request.bodyText,
-    }));
+    const withPruneRequests = recordedRequests(fake);
 
     assert.equal(withPruneRequests.length, 1);
     assert.deepEqual(withPruneRequests, withoutPruneRequests);

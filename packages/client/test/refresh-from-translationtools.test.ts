@@ -11,6 +11,7 @@ import {
   type TranslationRef,
 } from '@mvdmio/translation-tools-client';
 import { startFakeTranslationToolsHttp } from '../../../test/support/fake-translation-tools-http.ts';
+import { waitFor } from '../../../test/support/wait-for.ts';
 
 const ORIGIN = '@org/app:/translations/strings.json';
 const ENCODED_ORIGIN = '@org%2Fapp:%2Ftranslations%2Fstrings.json';
@@ -44,19 +45,6 @@ function respondProjectAndLocale(
   fake.respond('GET', localePath, {
     json: [{ origin: ORIGIN, key: 'home_title', value: homeValue }],
   });
-}
-
-async function waitFor(
-  predicate: () => boolean | Promise<boolean>,
-  timeoutMs = 2000,
-): Promise<void> {
-  const started = Date.now();
-  while (!(await predicate())) {
-    if (Date.now() - started > timeoutMs) {
-      throw new Error('Timed out waiting for condition');
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
 }
 
 test('initialize with no snapshot does a blocking refresh; bundled + background serves immediately', async () => {
