@@ -162,11 +162,11 @@ jsonResources:
 | --- | --- |
 | `apiKey` | Project API key. Prefer the `TRANSLATIONTOOLS_API_KEY` environment variable in CI and local shells. |
 | `defaultLocale` | Base locale. Defaults to `en`. |
-| `locales` | Locales this project cares about. Pull and push also use locales from TranslationTools. |
+| `locales` | Locales this project cares about. Pull also uses locales from TranslationTools. |
 | `generated.enabled` | When `true` (default), `pull` regenerates typed keys afterwards. `generate` always writes. |
 | `generated.path` | Where to write `Translations` and `TranslationsBundledSnapshot`. Defaults to `translations/generated.ts`. |
 | `jsonResources.resourceDirectories` | Directories that hold JSON resource files. Defaults to `translations`. |
-| `jsonResources.prune` | When `true`, pull drops local-only keys and push deletes remote keys for this package that no longer exist locally. Defaults to `false` (merge). |
+| `jsonResources.prune` | When `true`, pull drops local-only keys. Only pull uses it; push ignores it. Defaults to `false` (merge). |
 | `jsonResources.keyOverrides` | Map a JSON key to a different TranslationTools key (`json-key: translation-key`). Applied on generate, pull, and push. |
 
 API key lookup order for pull and push:
@@ -215,6 +215,8 @@ await client.initialize();
 2. Otherwise restore `bundledSnapshot`.
 3. Otherwise do a blocking refresh from TranslationTools.
 4. After restore, optionally refresh in the background when `backgroundRefreshEnabled` is true (the default).
+
+When `bundledSnapshot` is set, `initialize()` also sends TranslationTools a declaration of the keys in that snapshot, under the configured `environment`. The declaration goes out in the background, even when a stored snapshot was restored. It fills only empty translation values, so a start never overwrites an edit made in TranslationTools. If the request fails, the app starts as usual. Without `bundledSnapshot`, nothing is declared.
 
 `createClient` requires a non-empty `apiKey`. For bundled-only lookups with no network, still pass a key and set `backgroundRefreshEnabled: false` and `heartbeatEnabled: false`.
 
@@ -383,7 +385,7 @@ Both commands need an API key.
 
 **Pull** downloads translations whose origin belongs to this npm package and writes JSON resource files. Existing keys are updated in place. New keys are added. When `jsonResources.prune` is `false` (default), local-only keys are kept. When `prune` is `true`, local-only keys are dropped. When `generated.enabled` is `true` (default), pull then runs `generate`.
 
-**Push** uploads local JSON values. When `jsonResources.prune` is `false` (default), this **merges**: remote keys you do not have locally are preserved, including keys from other packages. When `prune` is `true`, remote keys for **this package** that no longer exist locally are omitted from the upload so TranslationTools can remove them. Origins from other packages are still kept.
+**Push** uploads the keys and values in your local JSON files, and only those. It fetches nothing from TranslationTools first and does not merge, and `jsonResources.prune` does not affect it. Two packages that push into one project keep each other's keys, because neither sends the other's. A key you delete from the JSON files is not removed by a push. It disappears from TranslationTools once no running app has declared it for 7 days, plus a 24-hour grace. Apps declare their keys at start (see [Create the client](#6-create-the-client-and-initialize-once-at-startup)). This needs a TranslationTools server that supports declarations.
 
 Normal workflow:
 

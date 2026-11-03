@@ -3,6 +3,7 @@ import {
   TranslationToolsNetworkException,
   TranslationToolsSerializationException,
 } from './exceptions.js';
+import type { DeclarationItem } from './declaration.js';
 import type { ProjectMetadata, TranslationItem, TranslationRef } from './models.js';
 
 /** RFC 3986 path-segment encoding (Ktor encodeURLPathPart): keep pchar, encode `/`. */
@@ -31,6 +32,10 @@ export interface TranslationToolsApi {
     version: string;
   }): Promise<void>;
   pushGlobals(args: { environment: string | null; names: readonly string[] }): Promise<void>;
+  declareKeys(args: {
+    environment: string | null;
+    items: readonly DeclarationItem[];
+  }): Promise<void>;
 }
 
 export interface CreateHttpApiOptions {
@@ -171,6 +176,26 @@ export function createHttpApi(options: CreateHttpApiOptions): TranslationToolsAp
             items: [],
             environment: args.environment,
             globals: [...args.names],
+          }),
+        });
+        const bodyText = await response.text();
+        if (!response.ok) {
+          throw new TranslationToolsHttpException(response.status, bodyText);
+        }
+      });
+    },
+
+    async declareKeys(args): Promise<void> {
+      await execute(async () => {
+        const response = await fetchImpl(`${baseUrl}/api/v1/translations/declaration`, {
+          method: 'POST',
+          headers: {
+            ...commonHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            items: args.items,
+            ...(args.environment ? { environment: args.environment } : {}),
           }),
         });
         const bodyText = await response.text();

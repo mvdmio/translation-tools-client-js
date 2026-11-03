@@ -72,18 +72,6 @@ function findPost(fake: Awaited<ReturnType<typeof startFakeTranslationToolsHttp>
   return post;
 }
 
-function respondEmptyRemote(
-  fake: Awaited<ReturnType<typeof startFakeTranslationToolsHttp>>,
-  locales: string[] = ['en'],
-): void {
-  fake.respond('GET', '/api/v1/translations/project', {
-    json: { locales, defaultLocale: locales[0] ?? 'en' },
-  });
-  for (const locale of locales) {
-    fake.respond('GET', `/api/v1/translations/${locale}`, { json: [] });
-  }
-}
-
 test('push POSTs this package origins, locales, keys, and values', async () => {
   const cwd = await projectWith('@Org/App', {
     'translationtools.yaml': yaml({ prune: true, locales: ['en', 'nl'] }),
@@ -93,7 +81,6 @@ test('push POSTs this package origins, locales, keys, and values', async () => {
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    respondEmptyRemote(fake, ['en', 'nl']);
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 2,
@@ -135,79 +122,34 @@ test('push POSTs this package origins, locales, keys, and values', async () => {
   }
 });
 
-test('prune false keeps remote-only keys in the POST; prune true omits them', async () => {
+function respondPostOk(fake: Awaited<ReturnType<typeof startFakeTranslationToolsHttp>>): void {
+  fake.respond('POST', '/api/v1/translations/project', {
+    json: {
+      receivedKeyCount: 1,
+      createdKeyCount: 0,
+      updatedKeyCount: 1,
+      removedKeyCount: 0,
+    },
+  });
+}
+
+test('push makes one POST with only local items and no GET', async () => {
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    fake.respond('GET', '/api/v1/translations/project', {
-      json: { locales: ['en'], defaultLocale: 'en' },
-    });
-    fake.respond('GET', '/api/v1/translations/en', {
-      json: [
-        {
-          origin: 'example-app:/translations/strings.json',
-          key: 'home_title',
-          value: 'Home remote',
-        },
-        {
-          origin: 'example-app:/translations/strings.json',
-          key: 'remote_only',
-          value: 'Keep me',
-        },
-      ],
-    });
-    fake.respond('POST', '/api/v1/translations/project', {
-      json: {
-        receivedKeyCount: 2,
-        createdKeyCount: 0,
-        updatedKeyCount: 1,
-        removedKeyCount: 0,
-      },
-    });
-
-    const withoutPrune = await projectWith('example-app', {
+    respondPostOk(fake);
+    const cwd = await projectWith('example-app', {
       'translationtools.yaml': yaml({ prune: false }),
       'translations/strings.json': `${JSON.stringify({ home_title: 'Home local' }, null, 2)}\n`,
     });
-    const keepResult = await runCli(['push'], {
-      cwd: withoutPrune,
-      apiKey: 'key',
-      baseUrl: fake.baseUrl,
-    });
-    assert.equal(keepResult.exitCode, 0, keepResult.stderr);
-    const keepItems = parsePostedItems(findPost(fake).bodyText);
+    const result = await runCli(['push'], { cwd, apiKey: 'key', baseUrl: fake.baseUrl });
+    assert.equal(result.exitCode, 0, result.stderr);
+
     assert.deepEqual(
-      keepItems.map((item) => ({ key: item.key, value: item.value })).sort((a, b) =>
-        a.key.localeCompare(b.key),
-      ),
-      [
-        { key: 'home_title', value: 'Home local' },
-        { key: 'remote_only', value: 'Keep me' },
-      ],
+      fake.requests.map((request) => `${request.method} ${request.path}`),
+      ['POST /api/v1/translations/project'],
     );
-
-    fake.requests.length = 0;
-    fake.respond('POST', '/api/v1/translations/project', {
-      json: {
-        receivedKeyCount: 1,
-        createdKeyCount: 0,
-        updatedKeyCount: 1,
-        removedKeyCount: 1,
-      },
-    });
-
-    const withPrune = await projectWith('example-app', {
-      'translationtools.yaml': yaml({ prune: true }),
-      'translations/strings.json': `${JSON.stringify({ home_title: 'Home local' }, null, 2)}\n`,
-    });
-    const dropResult = await runCli(['push'], {
-      cwd: withPrune,
-      apiKey: 'key',
-      baseUrl: fake.baseUrl,
-    });
-    assert.equal(dropResult.exitCode, 0, dropResult.stderr);
-    const dropItems = parsePostedItems(findPost(fake).bodyText);
-    assert.deepEqual(dropItems, [
+    assert.deepEqual(parsePostedItems(findPost(fake).bodyText), [
       {
         origin: 'example-app:/translations/strings.json',
         locale: 'en',
@@ -220,72 +162,88 @@ test('prune false keeps remote-only keys in the POST; prune true omits them', as
   }
 });
 
-test('prune on push keeps other-package origins and drops this package remote-only keys', async () => {
-  const cwd = await projectWith('package-a', {
-    'translationtools.yaml': yaml({ prune: true }),
-    'translations/strings.json': `${JSON.stringify({ home_title: 'A local' }, null, 2)}\n`,
-  });
+test('jsonResources.prune true sends the same push request as false', async () => {
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    fake.respond('GET', '/api/v1/translations/project', {
-      json: { locales: ['en'], defaultLocale: 'en' },
-    });
-    fake.respond('GET', '/api/v1/translations/en', {
-      json: [
-        {
-          origin: 'package-a:/translations/strings.json',
-          key: 'home_title',
-          value: 'A remote',
-        },
-        {
-          origin: 'package-a:/translations/strings.json',
-          key: 'remote_only',
-          value: 'Drop me',
-        },
-        {
-          origin: 'package-b:/translations/strings.json',
-          key: 'home_title',
-          value: 'B remote',
-        },
-      ],
-    });
-    fake.respond('POST', '/api/v1/translations/project', {
-      json: {
-        receivedKeyCount: 2,
-        createdKeyCount: 0,
-        updatedKeyCount: 1,
-        removedKeyCount: 1,
-      },
-    });
+    respondPostOk(fake);
+    const files = {
+      'translations/strings.json': `${JSON.stringify({ home_title: 'Home local' }, null, 2)}\n`,
+    };
 
-    const result = await runCli(['push'], {
-      cwd,
+    const withoutPrune = await projectWith('example-app', {
+      ...files,
+      'translationtools.yaml': yaml({ prune: false }),
+    });
+    const keepResult = await runCli(['push'], {
+      cwd: withoutPrune,
       apiKey: 'key',
       baseUrl: fake.baseUrl,
     });
-    assert.equal(result.exitCode, 0, result.stderr);
+    assert.equal(keepResult.exitCode, 0, keepResult.stderr);
+    const withoutPruneRequests = fake.requests.map((request) => ({
+      method: request.method,
+      path: request.path,
+      bodyText: request.bodyText,
+    }));
 
-    const items = parsePostedItems(findPost(fake).bodyText);
+    fake.requests.length = 0;
+    const withPrune = await projectWith('example-app', {
+      ...files,
+      'translationtools.yaml': yaml({ prune: true }),
+    });
+    const pruneResult = await runCli(['push'], {
+      cwd: withPrune,
+      apiKey: 'key',
+      baseUrl: fake.baseUrl,
+    });
+    assert.equal(pruneResult.exitCode, 0, pruneResult.stderr);
+    const withPruneRequests = fake.requests.map((request) => ({
+      method: request.method,
+      path: request.path,
+      bodyText: request.bodyText,
+    }));
+
+    assert.equal(withPruneRequests.length, 1);
+    assert.deepEqual(withPruneRequests, withoutPruneRequests);
+  } finally {
+    await fake.close();
+  }
+});
+
+test('pushing two packages in turn sends only each package own origins', async () => {
+  const fake = await startFakeTranslationToolsHttp();
+
+  try {
+    respondPostOk(fake);
+
+    const first = await projectWith('package-a', {
+      'translationtools.yaml': yaml({ prune: true }),
+      'translations/strings.json': `${JSON.stringify({ home_title: 'A local' }, null, 2)}\n`,
+    });
+    const firstResult = await runCli(['push'], { cwd: first, apiKey: 'key', baseUrl: fake.baseUrl });
+    assert.equal(firstResult.exitCode, 0, firstResult.stderr);
     assert.deepEqual(
-      items.map((item) => ({ origin: item.origin, key: item.key, value: item.value })),
-      [
-        {
-          origin: 'package-a:/translations/strings.json',
-          key: 'home_title',
-          value: 'A local',
-        },
-        {
-          origin: 'package-b:/translations/strings.json',
-          key: 'home_title',
-          value: 'B remote',
-        },
-      ],
+      parsePostedItems(findPost(fake).bodyText).map((item) => item.origin),
+      ['package-a:/translations/strings.json'],
     );
-    assert.equal(
-      items.some((item) => item.origin.startsWith('package-a:') && item.key === 'remote_only'),
-      false,
+
+    fake.requests.length = 0;
+    const second = await projectWith('package-b', {
+      'translationtools.yaml': yaml({ prune: true }),
+      'translations/strings.json': `${JSON.stringify({ home_title: 'B local' }, null, 2)}\n`,
+    });
+    const secondResult = await runCli(['push'], {
+      cwd: second,
+      apiKey: 'key',
+      baseUrl: fake.baseUrl,
+    });
+    assert.equal(secondResult.exitCode, 0, secondResult.stderr);
+    assert.deepEqual(
+      parsePostedItems(findPost(fake).bodyText).map((item) => item.origin),
+      ['package-b:/translations/strings.json'],
     );
+    assert.equal(fake.requests.length, 1);
   } finally {
     await fake.close();
   }
@@ -302,7 +260,6 @@ test('key override sends the TranslationTools key, not the JSON key', async () =
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    respondEmptyRemote(fake);
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 1,
@@ -379,7 +336,6 @@ test('two packages with the same JSON key produce different origins in the POST 
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    respondEmptyRemote(fake);
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 1,
@@ -427,7 +383,6 @@ test('TRANSLATIONTOOLS_API_KEY wins over yaml apiKey; yaml is used when env is u
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    respondEmptyRemote(fake);
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 1,
@@ -478,7 +433,6 @@ test('empty JSON resource files push no items for that file', async () => {
   const fake = await startFakeTranslationToolsHttp();
 
   try {
-    respondEmptyRemote(fake);
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 1,

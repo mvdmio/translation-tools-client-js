@@ -73,6 +73,10 @@ const title = await client.get(
 client.dispose();
 ```
 
+## Declaring keys at start
+
+When `bundledSnapshot` is set, `initialize()` sends TranslationTools a declaration of the keys in that snapshot, under the configured `environment`. TranslationTools uses declarations to remove keys that no running app has declared for 7 days (plus a 24-hour grace). The declaration goes out in the background, fills only empty translation values, and never fails `initialize()`. Without `bundledSnapshot`, nothing is declared.
+
 ## Reads
 
 - `getCached(...)` returns the cached value. It does not substitute placeholders.

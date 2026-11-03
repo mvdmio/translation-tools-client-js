@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { buildDeclarationItems } from './declaration.js';
 import { TranslationToolsValidationException } from './exceptions.js';
 import { HeartbeatLoop } from './heartbeat.js';
 import type { TranslationToolsApi } from './http.js';
@@ -103,6 +104,7 @@ export class TranslationToolsClient {
     }
 
     this.pushGlobalsAtStartup();
+    this.declareKeysAtStartup();
 
     if (!restored) {
       try {
@@ -344,6 +346,22 @@ export class TranslationToolsClient {
         names: this.globals.registeredNames,
       })
       .catch(() => {});
+  }
+
+  private declareKeysAtStartup(): void {
+    const bundled = this.options.bundledSnapshot;
+    if (!bundled) {
+      return;
+    }
+    try {
+      const items = buildDeclarationItems(bundled, DEFAULT_LOCALE);
+      if (items.length === 0) {
+        return;
+      }
+      void this.api.declareKeys({ environment: this.options.environment, items }).catch(() => {});
+    } catch {
+      // A Declaration never fails startup.
+    }
   }
 
   private startHeartbeat(): void {

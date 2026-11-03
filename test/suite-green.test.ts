@@ -308,7 +308,7 @@ await main();
   assert.equal(result.stdout.trim(), 'Home');
 });
 
-test('push prune false keeps other-package remote origins in the POST body', async () => {
+test('push prune false sends only this package origins and fetches nothing', async () => {
   const { startFakeTranslationToolsHttp } = await import(
     './support/fake-translation-tools-http.ts'
   );
@@ -346,23 +346,6 @@ jsonResources:
 
   const fake = await startFakeTranslationToolsHttp();
   try {
-    fake.respond('GET', '/api/v1/translations/project', {
-      json: { locales: ['en'], defaultLocale: 'en' },
-    });
-    fake.respond('GET', '/api/v1/translations/en', {
-      json: [
-        {
-          origin: 'package-a:/translations/strings.json',
-          key: 'home_title',
-          value: 'A remote',
-        },
-        {
-          origin: 'package-b:/translations/strings.json',
-          key: 'home_title',
-          value: 'B remote',
-        },
-      ],
-    });
     fake.respond('POST', '/api/v1/translations/project', {
       json: {
         receivedKeyCount: 2,
@@ -396,13 +379,9 @@ jsonResources:
           key: 'home_title',
           value: 'A local',
         },
-        {
-          origin: 'package-b:/translations/strings.json',
-          key: 'home_title',
-          value: 'B remote',
-        },
       ],
     );
+    assert.equal(fake.requests.filter((request) => request.method === 'GET').length, 0);
   } finally {
     await fake.close();
   }
