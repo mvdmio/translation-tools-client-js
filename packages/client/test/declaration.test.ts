@@ -45,12 +45,15 @@ function declarationRequests(fake: Awaited<ReturnType<typeof startFakeTranslatio
  * Replaces `globalThis.fetch` and records the URL of every Declaration call. The client binds
  * `globalThis.fetch` when it is created, so install this before `createClient`. Calls pass
  * through to the real `fetch` unless `rejectDeclarations` is set, which fails them the way
- * `fetch` fails on a network error.
+ * `fetch` fails on a network error. For each Declaration call it also records in
+ * `declarationSettled` a promise that never rejects and settles once the client has received the
+ * whole response, body included, or once the call has failed.
  */
 function interceptFetch() {
   const original = globalThis.fetch;
   const intercept = {
     declarationCalls: [] as string[],
+    declarationSettled: [] as Promise<void>[],
     rejectDeclarations: false,
     restore: () => {
       globalThis.fetch = original;
@@ -60,8 +63,18 @@ function interceptFetch() {
     if (String(input).endsWith(DECLARATION_PATH)) {
       intercept.declarationCalls.push(String(input));
       if (intercept.rejectDeclarations) {
+        intercept.declarationSettled.push(Promise.resolve());
         return Promise.reject(new TypeError('fetch failed'));
       }
+      const response = original(input, init);
+      // Read a clone, so the client's own read of the body is unaffected.
+      intercept.declarationSettled.push(
+        response.then(
+          async (received) => void (await received.clone().arrayBuffer()),
+          () => {},
+        ).catch(() => {}),
+      );
+      return response;
     }
     return original(input, init);
   }) as typeof globalThis.fetch;
@@ -242,7 +255,8 @@ test('initialize resolves and logs nothing when the declaration fails', async ()
       baseUrl: fake.baseUrl,
     });
     await httpFailure.initialize();
-    await waitFor(() => declarationRequests(fake).length === 1);
+    await waitFor(() => intercept.declarationCalls.length === 1);
+    await Promise.allSettled(intercept.declarationSettled);
     await settle();
     httpFailure.dispose();
 
@@ -257,6 +271,7 @@ test('initialize resolves and logs nothing when the declaration fails', async ()
     });
     await networkFailure.initialize();
     await waitFor(() => intercept.declarationCalls.length === 2);
+    await Promise.allSettled(intercept.declarationSettled);
     await settle();
     networkFailure.dispose();
     assert.equal(declarationRequests(fake).length, 1);
