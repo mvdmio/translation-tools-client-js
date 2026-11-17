@@ -40,6 +40,14 @@ _Avoid_: name, string name, identifier
 A language, optionally with a region (`en`, `nl`, `pt-br`).
 _Avoid_: language, culture, culture info
 
+**Placeholder**:
+A named slot in a translation value that the app fills in at lookup, written as a lowercase letter followed by letters and digits, in braces (`{userName}`). A Key's placeholders are the ones its default-locale value contains.
+_Avoid_: token, argument, parameter, variable
+
+**Global placeholder**:
+A placeholder whose value the app supplies once for every lookup instead of on each call (`{appName}`).
+_Avoid_: shared placeholder, default placeholder
+
 **Bundled fallback**:
 Translations shipped with the app so lookups work before the first refresh and when the network is down.
 
