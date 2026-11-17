@@ -48,6 +48,14 @@ _Avoid_: token, argument, parameter, variable
 A placeholder whose value the app supplies once for every lookup instead of on each call (`{appName}`).
 _Avoid_: shared placeholder, default placeholder
 
+**Plural**:
+A translation value that is one ICU plural argument wrapping the whole value, with a whole sentence per Plural form (`{count, plural, =0 {No items} one {# item} other {# items}}`). The app passes a whole number under the argument's name, and that number picks the form.
+_Avoid_: plural string, ICU message, quantity string
+
+**Plural form**:
+One case of a Plural: an exact number (`=0`) or a CLDR plural category (`one`, `few`, `other`), together with the sentence shown for it. A `#` in the sentence prints the number.
+_Avoid_: branch, variant, quantity
+
 **Bundled fallback**:
 Translations shipped with the app so lookups work before the first refresh and when the network is down.
 
