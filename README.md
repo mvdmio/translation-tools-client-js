@@ -15,7 +15,7 @@ Use this package in your application when you want to:
 - look up translations from application code
 - ship bundled fallback translations with the app
 - fetch updated translations from TranslationTools after the app is installed
-- substitute `{token}` placeholders, including ambient global placeholders
+- substitute `{token}` placeholders, including ambient global placeholders, and render Plurals
 - persist a snapshot between launches
 
 Install:
@@ -282,7 +282,7 @@ Locales are trimmed and lowercased (`pt-BR` and ` pt-br ` both become `pt-br`).
 | `heartbeatEnabled` | `boolean` | `true` | Periodically reports this client so it appears in the TranslationTools management UI. |
 | `heartbeatIntervalMs` | `number` | `3_600_000` (1 hour) | How often the heartbeat is sent. |
 | `globalPlaceholders` | `Record<string, () => string \| null \| undefined>` | `{}` | Ambient placeholder resolvers available to every key. |
-| `throwOnPlaceholderError` | `boolean` | `false` | Throw `PlaceholderSubstitutionException` on an unresolved placeholder instead of leaving the raw `{token}`. |
+| `throwOnPlaceholderError` | `boolean` | `false` | Throw `PlaceholderSubstitutionException` on an unresolved placeholder instead of leaving the raw `{token}`, and on a missing or non-whole Plural number. |
 
 ## Refreshing translations
 
@@ -360,7 +360,50 @@ Names must match `[a-z][a-zA-Z0-9]*`. A per-call binding shadows a global of the
 
 When a token has no binding and no working global, the default is to leave the raw `{token}` and write a warning. Set `throwOnPlaceholderError: true` to throw `PlaceholderSubstitutionException` instead.
 
+A binding may be a number. `{ userName: 5 }` turns `Hello {userName}` into `Hello 5`.
+
 `getCached(...)` returns the raw value and does not substitute. Use `get(...)` or `withPlaceholders(...)` to render placeholders.
+
+## Plurals
+
+A Plural is a value that holds one whole sentence per plural form, written in ICU syntax. The number goes in the same map as the other placeholders, under the Plural's argument name:
+
+```json
+{
+  "cart_items": "{count, plural, =0 {Your cart is empty} one {# item in {cartName}} other {# items in {cartName}}}"
+}
+```
+
+```ts
+const text = await client.get(Translations.cart_items, 'en', {
+  count: 5,
+  cartName: 'Cart',
+});
+// 5 items in Cart
+
+const text2 = await client
+  .withPlaceholders(Translations.cart_items.ref, 'en')
+  .setPlaceholder('count', 5)
+  .setPlaceholder('cartName', 'Cart')
+  .render();
+```
+
+`get(...)` and `render()` return the one sentence the number picks, in the Locale of the lookup:
+
+- An exact case such as `=0` wins over a plural category.
+- Otherwise the CLDR plural rules of the Locale pick the category (`zero`, `one`, `two`, `few`, `many`, or `other`). In Polish, 1 is `one`, 22 is `few`, and 25 is `many`. A value without a form for that category uses its `other` form.
+- `#` prints the number in the number format of the Locale, so `1000` prints as `1,000` in English. Write `'#'` for a literal `#`.
+- Other placeholders in the picked form are filled in as usual, global placeholders included.
+- A Locale with a region such as `pt-br` uses the rules of its language when the region is unknown. A Locale the runtime does not know picks `other` and prints `#` as plain digits.
+- Fallback text (a generated resource's `fallback` or your `defaultValue`) is picked by the rules of the project default Locale, because that text is in the default Locale's language.
+
+The number must be a whole number. When it is missing, or is not whole (`1.5`, `NaN`, `Infinity`, or the string `'5'`), `get(...)` returns the raw value and writes the warning `No whole number supplied for plural argument 'count'.` With `throwOnPlaceholderError: true` it throws `PlaceholderSubstitutionException` instead.
+
+Only a value that is a Plural from its first brace to its last renders this way. A plural that is only part of a value, a nested plural, a value with `{0}` in a form, `offset:`, and a Plural without an `other` form render as plain text, as before.
+
+`getCached(...)` and `observe(...)` return the raw ICU text.
+
+Put a Plural on a new key. Older builds of your app do not know Plurals and show the raw ICU text of a key they already use.
 
 ## Origins
 

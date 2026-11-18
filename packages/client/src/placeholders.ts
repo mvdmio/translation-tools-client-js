@@ -1,6 +1,14 @@
 import { PlaceholderSubstitutionException } from './exceptions.js';
+import {
+  getPluralLocale,
+  isPluralCategory,
+  type PluralCategory,
+  type PluralLocale,
+} from './plural-rules.js';
 
-export type PlaceholderBindings = Readonly<Record<string, string | null | undefined>>;
+export type PlaceholderBindings = Readonly<
+  Record<string, string | number | null | undefined>
+>;
 
 export type GlobalPlaceholderResolver = {
   readonly registeredNames: readonly string[];
@@ -10,7 +18,26 @@ export type GlobalPlaceholderResolver = {
 
 type PlaceholderSegment =
   | { readonly kind: 'literal'; readonly text: string }
-  | { readonly kind: 'token'; readonly name: string };
+  | { readonly kind: 'token'; readonly name: string }
+  /** `#` inside a plural form: the number, formatted. */
+  | { readonly kind: 'pound' };
+
+type PluralSelector =
+  | { readonly kind: 'exact'; readonly value: number }
+  | { readonly kind: 'category'; readonly name: PluralCategory };
+
+type PluralCase = {
+  readonly selector: PluralSelector;
+  readonly segments: readonly PlaceholderSegment[];
+};
+
+type ParsedPlural = {
+  /** The name the number is bound under. It is not a Placeholder. */
+  readonly argument: string;
+  readonly cases: readonly PluralCase[];
+  /** The `other` case, which is also one of `cases`. */
+  readonly other: PluralCase;
+};
 
 const GLOBAL_NAME_RE = /^[a-z][a-zA-Z0-9]*$/;
 
@@ -52,10 +79,19 @@ export function createGlobalPlaceholderRegistry(
 }
 
 export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
-  if (input.length === 0) {
-    return [];
-  }
+  return scanSegments(input, 0, false)?.segments ?? [];
+}
 
+/**
+ * Scans text into segments. In a plural form (`inForm`) the scan stops at the unquoted `}`
+ * that closes the form, `#` is a segment, and any unquoted `{` that is not a token makes the
+ * text invalid (`null`), as does a form that never closes.
+ */
+function scanSegments(
+  input: string,
+  start: number,
+  inForm: boolean,
+): { segments: PlaceholderSegment[]; end: number } | null {
   const segments: PlaceholderSegment[] = [];
   let buffer = '';
 
@@ -66,7 +102,7 @@ export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
     }
   };
 
-  let i = 0;
+  let i = start;
   while (i < input.length) {
     const c = input[i]!;
 
@@ -79,7 +115,7 @@ export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
         continue;
       }
 
-      if (next === '{' || next === '}') {
+      if (next === '{' || next === '}' || (inForm && next === '#')) {
         i += 1;
         while (i < input.length) {
           if (input[i] === "'") {
@@ -102,6 +138,18 @@ export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
       continue;
     }
 
+    if (inForm && c === '}') {
+      flush();
+      return { segments, end: i };
+    }
+
+    if (inForm && c === '#') {
+      flush();
+      segments.push({ kind: 'pound' });
+      i += 1;
+      continue;
+    }
+
     if (c === '{') {
       const match = tryMatchToken(input, i);
       if (match) {
@@ -109,6 +157,9 @@ export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
         segments.push({ kind: 'token', name: match.name });
         i += match.consumed;
         continue;
+      }
+      if (inForm) {
+        return null;
       }
       buffer += '{';
       i += 1;
@@ -119,12 +170,98 @@ export function parsePlaceholderSegments(input: string): PlaceholderSegment[] {
     i += 1;
   }
 
+  if (inForm) {
+    return null;
+  }
   flush();
-  return segments;
+  return { segments, end: i };
+}
+
+const PLURAL_HEAD_RE = /\{\s*([a-z][a-zA-Z0-9]*)\s*,\s*plural\s*,\s*/y;
+const PLURAL_SELECTOR_RE = /(?:=(\d+)|([a-z]+))\s*\{/y;
+const WHITESPACE_RE = /\s*/y;
+
+function matchAt(re: RegExp, input: string, index: number): RegExpExecArray | null {
+  re.lastIndex = index;
+  return re.exec(input);
+}
+
+/**
+ * Parses a whole value of the form `{count, plural, =0 {...} one {...} other {...}}`.
+ * Returns `null` for any value that is not exactly that, so it renders as plain text.
+ */
+function parsePlural(input: string): ParsedPlural | null {
+  const head = matchAt(PLURAL_HEAD_RE, input, 0);
+  if (head == null) {
+    return null;
+  }
+
+  const cases: PluralCase[] = [];
+  const seen = new Set<string>();
+  let i = PLURAL_HEAD_RE.lastIndex;
+
+  while (true) {
+    const selectorMatch = matchAt(PLURAL_SELECTOR_RE, input, i);
+    if (selectorMatch == null) {
+      return null;
+    }
+    const [, digits, word] = selectorMatch;
+    let selector: PluralSelector;
+    if (digits != null) {
+      selector = { kind: 'exact', value: Number(digits) };
+    } else if (word != null && isPluralCategory(word)) {
+      selector = { kind: 'category', name: word };
+    } else {
+      return null;
+    }
+
+    const selectorKey = selector.kind === 'exact' ? `=${selector.value}` : selector.name;
+    if (seen.has(selectorKey)) {
+      return null;
+    }
+    seen.add(selectorKey);
+
+    const form = scanSegments(input, PLURAL_SELECTOR_RE.lastIndex, true);
+    if (form == null) {
+      return null;
+    }
+    cases.push({ selector, segments: form.segments });
+
+    matchAt(WHITESPACE_RE, input, form.end + 1);
+    i = WHITESPACE_RE.lastIndex;
+    if (input[i] === '}') {
+      break;
+    }
+  }
+
+  if (i !== input.length - 1) {
+    return null;
+  }
+
+  const other = cases.find((c) => c.selector.kind === 'category' && c.selector.name === 'other');
+  if (other == null) {
+    return null;
+  }
+  return { argument: head[1]!, cases, other };
+}
+
+function pickPluralForm(plural: ParsedPlural, count: number, locale: PluralLocale): PluralCase {
+  const category = locale.select(count);
+  return (
+    plural.cases.find((c) => c.selector.kind === 'exact' && c.selector.value === count) ??
+    plural.cases.find((c) => c.selector.kind === 'category' && c.selector.name === category) ??
+    plural.other
+  );
+}
+
+function tokenNames(segments: readonly PlaceholderSegment[]): string[] {
+  return segments.flatMap((segment) => (segment.kind === 'token' ? [segment.name] : []));
 }
 
 export function substitutePlaceholders(args: {
   value: string;
+  /** The Locale whose plural rules and number format a Plural in `value` uses. */
+  locale: string;
   bindings?: PlaceholderBindings | null;
   globals: GlobalPlaceholderResolver;
   throwOnError?: boolean;
@@ -132,6 +269,7 @@ export function substitutePlaceholders(args: {
 }): string {
   const {
     value,
+    locale,
     bindings = null,
     globals,
     throwOnError = false,
@@ -142,10 +280,34 @@ export function substitutePlaceholders(args: {
     return value;
   }
 
-  const segments = parsePlaceholderSegments(value);
+  const plural = parsePlural(value);
+  let segments: readonly PlaceholderSegment[];
+  let presentNames: Set<string>;
+  let numberText = '';
+
+  if (plural == null) {
+    segments = parsePlaceholderSegments(value);
+    presentNames = new Set(tokenNames(segments));
+  } else {
+    const count = bindings?.[plural.argument];
+    if (typeof count !== 'number' || !Number.isInteger(count)) {
+      warnOrThrow(
+        throwOnError,
+        warn,
+        `No whole number supplied for plural argument '${plural.argument}'.`,
+      );
+      return value;
+    }
+    const pluralLocale = getPluralLocale(locale);
+    segments = pickPluralForm(plural, count, pluralLocale).segments;
+    numberText = pluralLocale.format(count);
+    presentNames = new Set([
+      plural.argument,
+      ...plural.cases.flatMap((c) => tokenNames(c.segments)),
+    ]);
+  }
+
   let result = '';
-  const hasBindings = bindings != null && Object.keys(bindings).length > 0;
-  const consumedTokens = hasBindings ? new Set<string>() : null;
 
   for (const segment of segments) {
     if (segment.kind === 'literal') {
@@ -153,11 +315,15 @@ export function substitutePlaceholders(args: {
       continue;
     }
 
+    if (segment.kind === 'pound') {
+      result += numberText;
+      continue;
+    }
+
     const name = segment.name;
 
     if (bindings != null && Object.prototype.hasOwnProperty.call(bindings, name)) {
       result += bindings[name] ?? '';
-      consumedTokens?.add(name);
       continue;
     }
 
@@ -184,9 +350,9 @@ export function substitutePlaceholders(args: {
     );
   }
 
-  if (bindings != null && consumedTokens != null) {
+  if (bindings != null) {
     for (const key of Object.keys(bindings)) {
-      if (!consumedTokens.has(key)) {
+      if (!presentNames.has(key)) {
         warnOrThrow(throwOnError, warn, `Supplied placeholder '${key}' is not present in the value.`);
       }
     }

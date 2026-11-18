@@ -36,7 +36,7 @@ const CLIENT_VERSION = (
 ).version;
 
 export class TranslationRenderBuilder {
-  private readonly placeholders = new Map<string, string | null | undefined>();
+  private readonly placeholders = new Map<string, PlaceholderBindings[string]>();
 
   constructor(
     private readonly client: TranslationToolsClient,
@@ -45,13 +45,13 @@ export class TranslationRenderBuilder {
     private readonly defaultValue: string | null | undefined,
   ) {}
 
-  setPlaceholder(name: string, value: string | null | undefined): this {
+  setPlaceholder(name: string, value: PlaceholderBindings[string]): this {
     this.placeholders.set(name, value);
     return this;
   }
 
   render(): Promise<string> {
-    const bindings: Record<string, string | null | undefined> = {};
+    const bindings: Record<string, PlaceholderBindings[string]> = {};
     for (const [name, value] of this.placeholders) {
       bindings[name] = value;
     }
@@ -215,19 +215,29 @@ export class TranslationToolsClient {
     const resolvedLocale = this.resolveLocale(localeOrKey);
     const cachedItem = getCachedItem(this.translations, resolvedLocale, validatedRef);
     if (cachedItem != null) {
-      return this.render(cachedItem.value ?? defaultValue ?? validatedRef.key, placeholders);
+      return this.renderStored(
+        cachedItem.value,
+        resolvedLocale,
+        defaultValue ?? validatedRef.key,
+        placeholders,
+      );
     }
 
     try {
       const fetched = await this.api.getTranslation(resolvedLocale, validatedRef, defaultValue);
       this.putItem(resolvedLocale, { ...fetched, ref: validateRef(fetched.ref) });
       await this.persist();
-      return this.render(fetched.value ?? defaultValue ?? validatedRef.key, placeholders);
+      return this.renderStored(
+        fetched.value,
+        resolvedLocale,
+        defaultValue ?? validatedRef.key,
+        placeholders,
+      );
     } catch (error) {
       if (error instanceof TranslationToolsValidationException) {
         throw error;
       }
-      return this.render(defaultValue ?? validatedRef.key, placeholders);
+      return this.render(defaultValue ?? validatedRef.key, this.defaultLocale(), placeholders);
     }
   }
 
@@ -315,7 +325,20 @@ export class TranslationToolsClient {
     this.listeners.clear();
   }
 
-  private render(value: string, placeholders?: PlaceholderBindings): string {
+  /** A stored value is in the lookup's Locale. Fallback text is in the project default Locale. */
+  private renderStored(
+    stored: string | null | undefined,
+    resolvedLocale: string,
+    fallbackText: string,
+    placeholders?: PlaceholderBindings,
+  ): string {
+    return stored != null
+      ? this.render(stored, resolvedLocale, placeholders)
+      : this.render(fallbackText, this.defaultLocale(), placeholders);
+  }
+
+  /** `locale` is the Locale whose plural rules pick the form of a Plural in `value`. */
+  private render(value: string, locale: string, placeholders?: PlaceholderBindings): string {
     if (
       (placeholders == null || Object.keys(placeholders).length === 0) &&
       this.globals.registeredNames.length === 0 &&
@@ -327,6 +350,7 @@ export class TranslationToolsClient {
 
     return substitutePlaceholders({
       value,
+      locale,
       bindings: placeholders,
       globals: this.globals,
       throwOnError: this.options.throwOnPlaceholderError,
@@ -507,10 +531,11 @@ export class TranslationToolsClient {
     if (typeof fromProvider === 'string' && fromProvider.trim() !== '') {
       return normalizeLocale(fromProvider);
     }
-    if (this.projectMetadata?.defaultLocale) {
-      return this.projectMetadata.defaultLocale;
-    }
-    return DEFAULT_LOCALE;
+    return this.defaultLocale();
+  }
+
+  private defaultLocale(): string {
+    return this.projectMetadata?.defaultLocale || DEFAULT_LOCALE;
   }
 
   private isRefreshStale(referenceTime: Date): boolean {

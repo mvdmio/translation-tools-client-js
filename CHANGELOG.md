@@ -7,6 +7,7 @@ Requires a TranslationTools server that already runs michielvandermeer/mvdmio-su
 - The runtime client declares the keys in `bundledSnapshot` when `initialize()` runs, under the configured `environment`. Values fill only empty translation values. A failed declaration never fails `initialize()`. Without `bundledSnapshot`, nothing is declared.
 - `translationtools push` sends only the keys and values in the local JSON files. It no longer fetches project metadata or locales from TranslationTools first, and no longer merges remote keys into the upload.
 - `jsonResources.prune` no longer affects `translationtools push`. `translationtools pull` still uses it.
+- `get(...)` and `withPlaceholders(...).render()` render a Plural as the one sentence its number picks, by the CLDR rules of the lookup Locale. Pass the number in the placeholders map, for example `{ count: 5 }`. A placeholder binding may now be a number. A missing or non-whole number returns the raw value with a warning, or throws `PlaceholderSubstitutionException` with `throwOnPlaceholderError`. Put a Plural on a new key, because older builds of an app show the raw ICU text.
 - A key deleted from the JSON files disappears from TranslationTools once no running app has declared it for 7 days, plus a 24-hour grace.
 
 ## 0.1.0

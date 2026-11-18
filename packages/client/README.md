@@ -80,7 +80,7 @@ When `bundledSnapshot` is set, `initialize()` sends TranslationTools a declarati
 ## Reads
 
 - `getCached(...)` returns the cached value. It does not substitute placeholders.
-- `get(...)` returns the cached value first, fetches from TranslationTools on a miss, and substitutes `{token}` placeholders.
+- `get(...)` returns the cached value first, fetches from TranslationTools on a miss, and substitutes `{token}` placeholders and renders Plurals.
 - `observe(...)` calls a listener when a cached value changes.
 - `refresh()` / `refreshIfStale()` fetch updated translations.
 - `dispose()` stops the heartbeat timer.
