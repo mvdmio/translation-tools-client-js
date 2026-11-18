@@ -10,7 +10,9 @@ import { runCli } from './support/run-cli.ts';
 test('client package is importable', async () => {
   const mod = await import('@mvdmio/translation-tools-client');
   assert.equal(typeof mod, 'object');
-  assert.equal('parsePlaceholderSegments' in mod, false);
+  assert.equal(typeof mod.parsePlaceholderSegments, 'function');
+  assert.equal(typeof mod.parsePlural, 'function');
+  assert.equal(typeof mod.isValidGlobalPlaceholderName, 'function');
   assert.equal('substitutePlaceholders' in mod, false);
   assert.equal('createGlobalPlaceholderRegistry' in mod, false);
   assert.equal(typeof mod.createClient, 'function');

@@ -16,22 +16,22 @@ export type GlobalPlaceholderResolver = {
   resolve(name: string): string | null;
 };
 
-type PlaceholderSegment =
+export type PlaceholderSegment =
   | { readonly kind: 'literal'; readonly text: string }
   | { readonly kind: 'token'; readonly name: string }
   /** `#` inside a plural form: the number, formatted. */
   | { readonly kind: 'pound' };
 
-type PluralSelector =
+export type PluralSelector =
   | { readonly kind: 'exact'; readonly value: number }
   | { readonly kind: 'category'; readonly name: PluralCategory };
 
-type PluralCase = {
+export type PluralCase = {
   readonly selector: PluralSelector;
   readonly segments: readonly PlaceholderSegment[];
 };
 
-type ParsedPlural = {
+export type ParsedPlural = {
   /** The name the number is bound under. It is not a Placeholder. */
   readonly argument: string;
   readonly cases: readonly PluralCase[];
@@ -190,7 +190,7 @@ function matchAt(re: RegExp, input: string, index: number): RegExpExecArray | nu
  * Parses a whole value of the form `{count, plural, =0 {...} one {...} other {...}}`.
  * Returns `null` for any value that is not exactly that, so it renders as plain text.
  */
-function parsePlural(input: string): ParsedPlural | null {
+export function parsePlural(input: string): ParsedPlural | null {
   const head = matchAt(PLURAL_HEAD_RE, input, 0);
   if (head == null) {
     return null;

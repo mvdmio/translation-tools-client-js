@@ -1,6 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { loadConfig } from './config.js';
+import {
+  loadClientParser,
+  placeholdersOf,
+  splitByGlobals,
+  type ClientParser,
+  type KeyPlaceholders,
+} from './client-placeholders.js';
+import { configPath, loadConfig } from './config.js';
 import {
   buildTranslationProject,
   discoverJsonResourceFiles,
@@ -31,7 +38,15 @@ export async function runGenerate(cwd: string): Promise<GenerateResult> {
     config.jsonResources.keyOverrides,
   );
 
-  const source = renderGeneratedModule(project);
+  const parser = await loadClientParser(cwd);
+  for (const name of config.placeholders.globals) {
+    if (!parser.isValidGlobalPlaceholderName(name)) {
+      throw new Error(
+        `Invalid Placeholder name '${name}' in 'placeholders.globals' of ${configPath(cwd)}. Names must match [a-z][a-zA-Z0-9]*.`,
+      );
+    }
+  }
+  const source = renderGeneratedModule(project, parser, config.placeholders.globals);
   const outputFile = path.resolve(cwd, config.generated.path);
   await mkdir(path.dirname(outputFile), { recursive: true });
   await writeFile(outputFile, source, 'utf8');
@@ -42,7 +57,11 @@ export async function runGenerate(cwd: string): Promise<GenerateResult> {
   };
 }
 
-export function renderGeneratedModule(project: JsonResourceProject): string {
+export function renderGeneratedModule(
+  project: JsonResourceProject,
+  parser: ClientParser,
+  globals: readonly string[],
+): string {
   const nameByEntry = resolveIdentifierNames(
     project.entries.map((entry) => ({ origin: entry.origin, jsonKey: entry.jsonKey })),
   );
@@ -66,7 +85,7 @@ export function renderGeneratedModule(project: JsonResourceProject): string {
     if (fallback !== undefined) {
       lines.push(`    fallback: ${asTsString(fallback)},`);
     }
-    lines.push('  } satisfies TranslationStringResource,');
+    lines.push(`  } as ${resourceType(placeholdersOf(parser, fallback), globals)},`);
   }
 
   lines.push('};');
@@ -111,6 +130,24 @@ export function renderGeneratedModule(project: JsonResourceProject): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+function resourceType(placeholders: KeyPlaceholders, globals: readonly string[]): string {
+  const { pluralArgument } = placeholders;
+  const { required, optional } = splitByGlobals(placeholders.names, globals);
+  const optionalUnion = nameUnion(optional);
+  if (pluralArgument === null) {
+    return `TranslationStringResource<${nameUnion(required)}, ${optionalUnion}>`;
+  }
+  const properties = [
+    `${pluralArgument}: number`,
+    ...required.map((name) => `${name}: string | null | undefined`),
+  ];
+  return `TranslationStringResource<{ ${properties.join('; ')} }, ${optionalUnion}>`;
+}
+
+function nameUnion(names: readonly string[]): string {
+  return names.length === 0 ? 'never' : names.map(asTsString).join(' | ');
 }
 
 function asTsString(value: string): string {

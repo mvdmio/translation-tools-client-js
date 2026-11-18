@@ -62,6 +62,6 @@ Example: `@org/app:/translations/strings.json`. The npm package `name` (includin
 - `Translations.*` for typed lookups
 - `TranslationsBundledSnapshot` for bundled fallback
 
-That file imports `@mvdmio/translation-tools-client`. Install the client package in the app that looks up translations. This CLI does not depend on it.
+That file imports `@mvdmio/translation-tools-client`. Installing this CLI does not install the client, and `generate` needs the client installed in the project: install it in the app that looks up translations.
 
 When `generated.enabled` is `true` (default), `pull` runs `generate` afterwards. `generate` itself always writes.

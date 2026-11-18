@@ -13,6 +13,8 @@ import {
 import {
   createRefreshState,
   type ProjectMetadata,
+  type RequiredPlaceholders,
+  type ResourceGetArguments,
   type StoredTranslations,
   type TranslationItem,
   type TranslationRef,
@@ -156,10 +158,9 @@ export class TranslationToolsClient {
     placeholders?: PlaceholderBindings,
     defaultValue?: string | null,
   ): Promise<string>;
-  get(
-    resource: TranslationStringResource,
-    locale?: string | null,
-    placeholders?: PlaceholderBindings,
+  get<Required extends RequiredPlaceholders = string, Optional extends string = never>(
+    resource: TranslationStringResource<Required, Optional>,
+    ...args: ResourceGetArguments<Required, Optional>
   ): Promise<string>;
   get(
     origin: string,
@@ -168,7 +169,7 @@ export class TranslationToolsClient {
     placeholders?: PlaceholderBindings,
   ): Promise<string>;
   async get(
-    targetOrOrigin: TranslationRef | TranslationStringResource | string,
+    targetOrOrigin: TranslationRef | TranslationStringResource<string, string> | string,
     localeOrKey?: string | null,
     placeholdersOrLocale?: PlaceholderBindings | string | null,
     defaultValueOrPlaceholders?: string | null | PlaceholderBindings,

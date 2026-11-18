@@ -168,6 +168,7 @@ jsonResources:
 | `jsonResources.resourceDirectories` | Directories that hold JSON resource files. Defaults to `translations`. |
 | `jsonResources.prune` | When `true`, pull drops local-only keys. Only pull uses it; push ignores it. Defaults to `false` (merge). |
 | `jsonResources.keyOverrides` | Map a JSON key to a different TranslationTools key (`json-key: translation-key`). Applied on generate, pull, and push. |
+| `placeholders.globals` | Names of the Global placeholders your client resolves (see [Placeholders](#placeholders)). A listed name is optional on the Keys that contain it. Defaults to none. Each name must match `[a-z][a-zA-Z0-9]*`, or `generate` fails. |
 
 API key lookup order for pull and push:
 
@@ -184,12 +185,12 @@ npx translationtools generate
 
 This writes TypeScript at `generated.path` (default `translations/generated.ts`):
 
-- `Translations.*` for typed lookups
+- `Translations.*` for typed lookups, each Key carrying the Placeholders its default-locale value contains
 - `TranslationsBundledSnapshot` for bundled fallback
 
 `generate` does not call TranslationTools and does not need an API key. Do not edit the generated file by hand. Run `generate` again after you change JSON resource files.
 
-The generated module imports types from `@mvdmio/translation-tools-client`. Install that package in the app that looks up translations.
+`generate` needs `@mvdmio/translation-tools-client` installed in the project: it reads the Placeholders of each value with the client's own parser, so installing the CLI does not install the client. The generated module imports types from the same package.
 
 ### 6. Create the client and initialize once at startup
 
@@ -235,7 +236,15 @@ const stop = client.observe(Translations.home_title, (value) => {
 stop();
 ```
 
-You can also look up by translation ref, or by origin and key, without generated accessors:
+A lookup through a generated resource is typed by the Placeholders of the Key. The call fails to compile when it leaves out a Placeholder the default-locale value contains, or passes a name the value does not contain:
+
+```ts
+const greeting = await client.get(Translations.greeting, 'en', { userName: 'Ana' });
+```
+
+See [Placeholders](#placeholders) for the rules.
+
+You can also look up by translation ref, or by origin and key, without generated accessors. These lookups keep the free-form placeholders map:
 
 ```ts
 const title = await client.get(
@@ -342,6 +351,12 @@ const greeting2 = await client
   .render();
 ```
 
+`generate` reads the Placeholders from the default-locale value of each Key and types the lookup with them:
+
+- A Placeholder the default-locale value contains is required. Leaving it out, or passing a name the value does not contain, is a compile error. Regenerate after you edit a value.
+- A Plural's number is required as a `number`, under the Plural's argument name. `client.get(Translations.cart_items, 'en', { count: 5, cartName: 'Cart' })` compiles; `{ count: '5' }` does not.
+- A lookup by ref (`Translations.greeting.ref`), by origin and key, and `withPlaceholders(...)` keep the free-form map and are not checked.
+
 **Global placeholders** are available to every key. Register them once in options. Their names are pushed to TranslationTools at startup so they appear in the management UI:
 
 ```ts
@@ -357,6 +372,16 @@ const client = createClient({
 ```
 
 Names must match `[a-z][a-zA-Z0-9]*`. A per-call binding shadows a global of the same name.
+
+List the names of your Global placeholders under `placeholders.globals` in `translationtools.yaml` so the typed lookups do not require them:
+
+```yaml
+placeholders:
+  globals:
+    - appName
+```
+
+A Global placeholder listed there is optional on every Key whose value contains it: pass it in one call to override the global value for that lookup, or leave it out and the client fills in the global. A name the value does not contain is still rejected. A name that does not match the rule above fails `generate`, and no file is written. A Global placeholder that is not listed is a required Placeholder, like any other.
 
 When a token has no binding and no working global, the default is to leave the raw `{token}` and write a warning. Set `throwOnPlaceholderError: true` to throw `PlaceholderSubstitutionException` instead.
 

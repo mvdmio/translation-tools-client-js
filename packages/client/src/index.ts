@@ -3,6 +3,9 @@ export { TranslationToolsClient, TranslationRenderBuilder } from './client.js';
 export type {
   TranslationRef,
   TranslationStringResource,
+  PlaceholderValue,
+  RequiredPlaceholders,
+  ResourceGetArguments,
   ProjectMetadata,
   TranslationItem,
   TranslationSnapshot,
@@ -28,4 +31,15 @@ export {
   TranslationToolsValidationException,
   PlaceholderSubstitutionException,
 } from './exceptions.js';
-export type { PlaceholderBindings } from './placeholders.js';
+export type {
+  ParsedPlural,
+  PlaceholderBindings,
+  PlaceholderSegment,
+  PluralCase,
+  PluralSelector,
+} from './placeholders.js';
+export {
+  isValidGlobalPlaceholderName,
+  parsePlaceholderSegments,
+  parsePlural,
+} from './placeholders.js';

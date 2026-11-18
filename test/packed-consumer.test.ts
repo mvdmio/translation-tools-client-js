@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import {
   access,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -124,7 +125,9 @@ async function listTarballPaths(tarballPath: string): Promise<string[]> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
-  const { stdout } = await execFileAsync('tar', ['-tzf', tarballPath], {
+  // GNU tar reads `C:\...` as host:path, so name the tarball relative to its own directory.
+  const { stdout } = await execFileAsync('tar', ['-tzf', path.basename(tarballPath)], {
+    cwd: path.dirname(tarballPath),
     encoding: 'utf8',
   });
   return stdout
@@ -306,8 +309,12 @@ test('npm pack CLI tarball installs and runs translationtools bin without the cl
 
     const pkg = JSON.parse(await readFile(path.join(repoRoot, 'packages/cli/package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     };
     assert.equal(pkg.dependencies?.['@mvdmio/translation-tools-client'], undefined);
+    assert.equal(pkg.peerDependencies?.['@mvdmio/translation-tools-client'], '^0.1.0');
+    assert.equal(pkg.peerDependenciesMeta?.['@mvdmio/translation-tools-client']?.optional, true);
 
     await writeFile(
       path.join(cwd, 'package.json'),
@@ -363,6 +370,131 @@ test('npm pack CLI tarball installs and runs translationtools bin without the cl
   } finally {
     await rm(packDir, { recursive: true, force: true });
     await rm(cwd, { recursive: true, force: true });
+    await rm(path.join(repoRoot, 'packages/cli/LICENSE'), { force: true });
+  }
+});
+
+/** Type-checks `include` in `cwd` with the repo's `tsc`. */
+async function typecheck(cwd: string, include: string[]): Promise<SpawnResult> {
+  await writeFile(
+    path.join(cwd, 'tsconfig.json'),
+    `${JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          strict: true,
+          skipLibCheck: true,
+          noEmit: true,
+          types: [],
+        },
+        include,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+  return await run(
+    process.execPath,
+    [path.join(repoRoot, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.json'],
+    { cwd },
+  );
+}
+
+function consumerWith(...calls: string[]): string {
+  return `import type { TranslationToolsClient } from '@mvdmio/translation-tools-client';
+import { Translations } from './translations/generated.js';
+
+declare const client: TranslationToolsClient;
+
+export async function use(): Promise<void> {
+${calls.map((call) => `  await ${call};\n`).join('')}}
+`;
+}
+
+test('npm pack both tarballs: generate finds the client and types Placeholders', async () => {
+  const clientPackDir = await mkdtemp(path.join(tmpdir(), 'tt-pack-both-client-'));
+  const cliPackDir = await mkdtemp(path.join(tmpdir(), 'tt-pack-both-cli-'));
+  const cwd = await mkdtemp(path.join(tmpdir(), 'tt-packed-both-consumer-'));
+  try {
+    const clientTarball = await packWorkspacePackage('@mvdmio/translation-tools-client', clientPackDir);
+    const cliTarball = await packWorkspacePackage('@mvdmio/translation-tools-cli', cliPackDir);
+
+    await writeFile(
+      path.join(cwd, 'package.json'),
+      `${JSON.stringify({ name: 'consumer-app', version: '0.0.0', private: true, type: 'module' }, null, 2)}\n`,
+      'utf8',
+    );
+    const install = await runNpm(['install', clientTarball, cliTarball], { cwd });
+    assert.equal(install.exitCode, 0, install.stderr || install.stdout);
+
+    await writeFile(
+      path.join(cwd, 'translationtools.yaml'),
+      `apiKey: your-project-api-key
+defaultLocale: en
+locales:
+  - en
+generated:
+  enabled: true
+  path: translations/generated.ts
+jsonResources:
+  resourceDirectories:
+    - translations
+placeholders:
+  globals:
+    - appName
+`,
+      'utf8',
+    );
+    await mkdir(path.join(cwd, 'translations'));
+    await writeFile(
+      path.join(cwd, 'translations', 'strings.json'),
+      `${JSON.stringify({ greeting: 'Hello {userName}!', footer: '{appName} by {company}' }, null, 2)}\n`,
+      'utf8',
+    );
+
+    const packageBin = path.join(
+      cwd,
+      'node_modules',
+      '@mvdmio',
+      'translation-tools-cli',
+      'dist',
+      'bin.js',
+    );
+    const generate = await run(process.execPath, [packageBin, 'generate'], {
+      cwd,
+      env: { ...process.env, TRANSLATIONTOOLS_API_KEY: '' },
+    });
+    assert.equal(generate.exitCode, 0, generate.stderr);
+
+    await writeFile(
+      path.join(cwd, 'passes.ts'),
+      consumerWith(
+        "client.get(Translations.greeting, 'en', { userName: 'Ana' })",
+        "client.get(Translations.footer, 'en', { company: 'Acme' })",
+        "client.get(Translations.footer, 'en', { company: 'Acme', appName: 'Other' })",
+      ),
+      'utf8',
+    );
+    const passes = await typecheck(cwd, ['passes.ts']);
+    assert.equal(passes.exitCode, 0, `${passes.stdout}\n${passes.stderr}`);
+
+    await writeFile(
+      path.join(cwd, 'fails.ts'),
+      consumerWith("client.get(Translations.greeting, 'en', {})"),
+      'utf8',
+    );
+    const fails = await typecheck(cwd, ['fails.ts']);
+    assert.notEqual(fails.exitCode, 0);
+    assert.match(fails.stdout, /error TS\d+/);
+    assert.match(fails.stdout, /'userName'/);
+  } finally {
+    await rm(clientPackDir, { recursive: true, force: true });
+    await rm(cliPackDir, { recursive: true, force: true });
+    await rm(cwd, { recursive: true, force: true });
+    await rm(path.join(repoRoot, 'packages/client/LICENSE'), { force: true });
     await rm(path.join(repoRoot, 'packages/cli/LICENSE'), { force: true });
   }
 });

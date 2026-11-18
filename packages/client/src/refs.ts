@@ -29,7 +29,7 @@ export function validateRef(ref: TranslationRef): TranslationRef {
 }
 
 export function isStringResource(
-  value: TranslationRef | TranslationStringResource,
-): value is TranslationStringResource {
+  value: TranslationRef | TranslationStringResource<string, string>,
+): value is TranslationStringResource<string, string> {
   return 'ref' in value && value.ref != null && typeof value.ref === 'object';
 }

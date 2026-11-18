@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DEFAULT_BASE_URL, resolveCliBaseUrl } from '../src/http.ts';
+import { linkClient } from '../../../test/support/client-link.ts';
 import { startFakeTranslationToolsHttp } from '../../../test/support/fake-translation-tools-http.ts';
 import { runCli } from '../../../test/support/run-cli.ts';
 
@@ -24,6 +25,7 @@ async function projectWith(
     await writeFile(absolute, contents, 'utf8');
   }
 
+  await linkClient(cwd);
   return cwd;
 }
 

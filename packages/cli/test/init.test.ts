@@ -42,6 +42,7 @@ test('init writes starter yaml and JSON without API key or HTTP', async () => {
       yamlText,
       /^jsonResources:\n\s+resourceDirectories:\n\s+-\s+translations\n\s+prune:\s+false\n\s+keyOverrides:\s+\{\}$/m,
     );
+    assert.doesNotMatch(yamlText, /placeholders/);
 
     const jsonText = await readFile(path.join(cwd, 'translations', 'strings.json'), 'utf8');
     assert.deepEqual(JSON.parse(jsonText), { home_title: 'Home' });

@@ -26,6 +26,12 @@ export type TranslationToolsConfig = {
   locales: string[];
   generated: GeneratedConfig;
   jsonResources: JsonResourcesConfig;
+  placeholders: PlaceholdersConfig;
+};
+
+export type PlaceholdersConfig = {
+  /** Names of the Global placeholders; optional on every Key call. */
+  globals: string[];
 };
 
 export function renderDefaultConfig(): string {
@@ -170,6 +176,19 @@ export function parseConfig(text: string, filePath: string): TranslationToolsCon
     prune = jsonResourcesRaw.prune;
   }
 
+  if (root.placeholders !== undefined && !isPlainObject(root.placeholders)) {
+    throw new Error(
+      `'placeholders' in ${filePath} must be a YAML map, not ${valueKind(root.placeholders)}. Example:\nplaceholders:\n  globals:\n    - appName`,
+    );
+  }
+  const globalsRaw = isPlainObject(root.placeholders) ? root.placeholders.globals : undefined;
+  if (globalsRaw !== undefined && !Array.isArray(globalsRaw)) {
+    throw new Error(
+      `'placeholders.globals' in ${filePath} must be a YAML list, not ${valueKind(globalsRaw)}. Example:\nplaceholders:\n  globals:\n    - appName`,
+    );
+  }
+  const globals = Array.isArray(globalsRaw) ? globalsRaw.map((name) => String(name)) : [];
+
   return {
     apiKey,
     defaultLocale,
@@ -183,6 +202,7 @@ export function parseConfig(text: string, filePath: string): TranslationToolsCon
       prune,
       keyOverrides,
     },
+    placeholders: { globals },
   };
 }
 
