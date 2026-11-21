@@ -224,22 +224,23 @@ export class TranslationToolsClient {
       );
     }
 
+    let fetched: TranslationItem;
     try {
-      const fetched = await this.api.getTranslation(resolvedLocale, validatedRef, defaultValue);
+      fetched = await this.api.getTranslation(resolvedLocale, validatedRef, defaultValue);
       this.putItem(resolvedLocale, { ...fetched, ref: validateRef(fetched.ref) });
       await this.persist();
-      return this.renderStored(
-        fetched.value,
-        resolvedLocale,
-        defaultValue ?? validatedRef.key,
-        placeholders,
-      );
     } catch (error) {
       if (error instanceof TranslationToolsValidationException) {
         throw error;
       }
       return this.render(defaultValue ?? validatedRef.key, this.defaultLocale(), placeholders);
     }
+    return this.renderStored(
+      fetched.value,
+      resolvedLocale,
+      defaultValue ?? validatedRef.key,
+      placeholders,
+    );
   }
 
   withPlaceholders(

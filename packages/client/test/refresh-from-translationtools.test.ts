@@ -7,6 +7,7 @@ import {
   TranslationSnapshotStores,
   createClient,
   noOpSnapshotStore,
+  PlaceholderSubstitutionException,
   type StoredTranslations,
   type TranslationRef,
 } from '@mvdmio/translation-tools-client';
@@ -135,6 +136,124 @@ test('get on cache miss GETs encoded origin path and then getCached hits', async
   } finally {
     await fake.close();
   }
+});
+
+async function withFetchedValue(
+  key: string,
+  respond: { json: unknown } | { status: number; json: unknown },
+  options: { throwOnPlaceholderError?: boolean },
+  run: (client: ReturnType<typeof createClient>, ref: TranslationRef) => Promise<void>,
+): Promise<void> {
+  const fake = await startFakeTranslationToolsHttp();
+  try {
+    respondProjectAndLocale(fake, 'Home');
+    fake.respond('GET', `/api/v1/translations/${ENCODED_ORIGIN}/en/${key}`, respond);
+    const client = createClient({
+      apiKey: 'test-api-key',
+      bundledSnapshot: bundledSnapshot(),
+      backgroundRefreshEnabled: false,
+      heartbeatEnabled: false,
+      baseUrl: fake.baseUrl,
+      ...options,
+    });
+    await client.initialize();
+    try {
+      await run(client, { origin: ORIGIN, key });
+    } finally {
+      client.dispose();
+    }
+  } finally {
+    await fake.close();
+  }
+}
+
+const isMissingName = (error: unknown): boolean =>
+  error instanceof PlaceholderSubstitutionException &&
+  error.message === "No value supplied for placeholder '{name}'.";
+
+test('fetched lookup with throwOnPlaceholderError throws on a missing Placeholder, keeps the value, and renders once bound', async () => {
+  await withFetchedValue(
+    'fetched_name',
+    { json: { origin: ORIGIN, key: 'fetched_name', value: 'Hi {name}' } },
+    { throwOnPlaceholderError: true },
+    async (client, ref) => {
+      await assert.rejects(client.get(ref, 'en'), isMissingName);
+      assert.equal(client.getCached(ref, 'en'), 'Hi {name}');
+      assert.equal(await client.get(ref, 'en', { name: 'Ana' }), 'Hi Ana');
+    },
+  );
+});
+
+test('fetched Plural with throwOnPlaceholderError throws when the number is missing', async () => {
+  await withFetchedValue(
+    'fetched_plural',
+    {
+      json: {
+        origin: ORIGIN,
+        key: 'fetched_plural',
+        value: '{count, plural, one {# item} other {# items}}',
+      },
+    },
+    { throwOnPlaceholderError: true },
+    async (client, ref) => {
+      await assert.rejects(
+        client.get(ref, 'en'),
+        (error: unknown) =>
+          error instanceof PlaceholderSubstitutionException &&
+          error.message === "No whole number supplied for plural argument 'count'.",
+      );
+    },
+  );
+});
+
+test('fetched lookup without throwOnPlaceholderError returns the raw value and warns', async () => {
+  await withFetchedValue(
+    'fetched_warn',
+    { json: { origin: ORIGIN, key: 'fetched_warn', value: 'Hi {name}' } },
+    {},
+    async (client, ref) => {
+      const warnings: string[] = [];
+      const original = console.warn;
+      console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(' '));
+      try {
+        assert.equal(await client.get(ref, 'en'), 'Hi {name}');
+      } finally {
+        console.warn = original;
+      }
+      assert.deepEqual(warnings, ["No value supplied for placeholder '{name}'."]);
+    },
+  );
+});
+
+test('failed fetch renders the default value or the Key and does not throw', async () => {
+  await withFetchedValue(
+    'fetch_fails',
+    { status: 500, json: { error: 'boom' } },
+    { throwOnPlaceholderError: true },
+    async (client, ref) => {
+      assert.equal(await client.get(ref, 'en', undefined, 'Hello'), 'Hello');
+      assert.equal(await client.get(ref, 'en'), 'fetch_fails');
+    },
+  );
+});
+
+test('fetched lookup throws for bindings of another name and through withPlaceholders', async () => {
+  await withFetchedValue(
+    'fetched_other',
+    { json: { origin: ORIGIN, key: 'fetched_other', value: 'Hi {name}' } },
+    { throwOnPlaceholderError: true },
+    async (client, ref) => {
+      await assert.rejects(client.get(ref, 'en', { other: 'x' }), isMissingName);
+    },
+  );
+  await withFetchedValue(
+    'fetched_builder',
+    { json: { origin: ORIGIN, key: 'fetched_builder', value: 'Hi {name}' } },
+    { throwOnPlaceholderError: true },
+    async (client, ref) => {
+      await assert.rejects(client.withPlaceholders(ref, 'en').render(), isMissingName);
+    },
+  );
 });
 
 test('requests send raw Authorization and environment on locale, single-key, and heartbeat', async () => {
